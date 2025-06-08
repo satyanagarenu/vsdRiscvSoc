@@ -1,1678 +1,1592 @@
-# Task 1: Install & Sanity-Check the Toolchain
+#  Week 1: RISC-V Toolchain & Debugging
 
-## Objective
-Install the RISC-V GNU toolchain, add it to PATH, and verify the installation.
+**Goal:** Set up a RISC-V environment, compile and analyze C programs, explore the ABI, debug with GDB, boot bare-metal ELF on QEMU, use inline assembly, perform memory-mapped I/O, implement a custom linker script, understand start-up code, handle interrupts, and compare RV32IMAC vs RV32IMC.
 
-## Commands Used
-```bash
-tar -xzf riscv-toolchain-rv32imac-x86_64-ubuntu.tar.gz
-```
+##  Overview
+This project is a comprehensive journey through RISC-V bare-metal programming, completed as part of VSD-SoC-Labs Week 1, Sunday, June 08, 2025. It consists of 17 tasks that progressively build skills in RISC-V development, from toolchain setup to advanced low-level programming concepts. The objectives include setting up the RISC-V toolchain, writing and compiling C programs, debugging, and exploring architecture-specific features like atomic instructions and endianness. Key achievements include:
 
+- **Toolchain Setup**: Installed and verified the RISC-V GCC toolchain on Ubuntu 24.04 LTS (Task 1).
+- **Program Compilation**: Compiled a simple "Hello, RISC-V!" C program into an ELF file (Task 2).
+- **Assembly and Disassembly**: Converted C to assembly, disassembled ELFs, and analyzed hex dumps (Tasks 3, 4).
+- **Debugging and ABI**: Documented the RV32 ABI, debugged programs using GDB and QEMU, and inspected registers (Tasks 5, 6).
+- **Bare-Metal Execution**: Ran bare-metal programs on QEMU with OpenSBI, implementing UART output (Task 7).
+- **Optimization and Inline Assembly**: Analyzed GCC optimization effects and measured execution time with inline assembly (Tasks 8, 9).
+- **I/O and Linking**: Demonstrated memory-mapped I/O, crafted linker scripts, and explained startup code (Tasks 10, 11, 12).
+- **Interrupts and Atomics**: Enabled timer interrupts, implemented a mutex with atomic instructions, and compared RV32IMAC vs RV32IMC (Tasks 13, 14, 15).
+- **Advanced Features**: Retargeted Newlib printf for UART output and verified RV32’s little-endian nature using a union trick (Tasks 16, 17).
 
+The project targets the RV32IMAC architecture, using QEMU’s virt machine for emulation, and provides a solid foundation for understanding RISC-V bare-metal development.
 
-## Commands to inspect and view all the files inside the bin folder (binary files)
-```bash
-cd opt
-cd riscv
-ls bin
-```
+## SUMMARY TABLE
+| Task No | Title                              | Status    | One-line Summary                                      |
+|---------|------------------------------------|-----------|-------------------------------------------------------|
+| 1       | Toolchain Installation & Verification | Completed | Installed RISC-V toolchain and verified functionality. |
+| 2       | Compiling a RISC-V C Program       | Completed | Compiled a simple RISC-V C program to ELF.            |
+| 3       | C to Assembly Conversion           | Completed | Converted C code to RISC-V assembly for analysis.     |
+| 4       | Disassembly & Hex Dump             | Completed | Disassembled ELF and generated binary/hex outputs.    |
+| 5       | ABI & Register Cheat-Sheet         | Completed | Documented RV32 ABI and register roles.               |
+| 6       | Debugging with GDB                 | Completed | Debugged program with GDB and QEMU, inspecting registers. |
+| 7       | Bare-Metal Execution with QEMU     | Completed | Ran bare-metal ELF on QEMU with OpenSBI, using UART.  |
+| 8       | GCC Optimization Analysis          | Completed | Compared -O0 vs -O2 assembly for optimization effects. |
+| 9       | Inline Assembly Basics             | Completed | Measured execution time using inline assembly and rdcycle. |
+| 10      | Memory-Mapped I/O Demo             | Completed | Demonstrated memory-mapped I/O by toggling GPIO.      |
+| 11      | Linker Script 101                  | Completed | Implemented linker script placing .text at 0x00000000. |
+| 12      | Start-up Code & crt0               | Completed | Explained crt0.S responsibilities and sources.        |
+| 13      | Interrupt Primer                   | Completed | Enabled and handled machine-timer interrupt (MTIP).   |
+| 14      | RV32IMAC vs RV32IMC – What’s the “A”? | Completed | Explained RV32IMAC’s atomic extension (A) and its uses. |
+| 15      | Atomic Test Program                | Completed | Implemented a mutex using lr.w/sc.w for thread safety. |
+| 16      | Using Newlib printf Without an OS  | Completed | Retargeted Newlib printf to UART with custom _write.  |
+| 17      | Endianness & Struct Packing        | Completed | Verified RV32 is little-endian using a union trick.   |
 
-
-
-## Add PATH 
-```bash
-export PATH=$HOME/riscv/bin:$PATH
-```
-
-## To make PATH addition permanent
-```bash
-nano ~/.bashrc
-export PATH=$HOME/riscv/bin:$PATH
-source ~/.bashrc
-echo $PATH
-```
-- 1. First open the ~/.bashrc for editing the Shell config file
-- 2. Add the export line at the end of the config file
-- 3. Save and exit: (In nano, press Ctrl+O, then Enter to save. Then Ctrl+X to exit.) 
-- 4. Apply the changes by using source 
-- 5. Verify by running the echo and checking if it includes /home/yourusername/riscv/bin.
-
-
-## Verification Commands
-```bash
-riscv32-unknown-elf-gcc --version
-riscv32-unknown-elf-gdb --version
-riscv32-unknown-elf-objdump --version
-```
+##  Task 1: Toolchain Installation & Verification
 
 
 
-- ✅ riscv32-unknown-elf-gcc --version → shows GCC 14.2.0 → Compiler is working
-- ✅ riscv32-unknown-elf-objdump --version → shows Binutils 2.43.1 → Disassembler is working
-- ✅ riscv32-unknown-elf-gdb --version → shows GDB 15.2 → Debugger is working
+### Objective
+Install and verify the RISC-V GNU toolchain to enable compiling and debugging RISC-V programs on a 32-bit RISC-V architecture.
 
-# Task 2: Compile “Hello, RISC-V”
+###  Architecture & Platform
+- **Architecture**: RISC-V RV32IMC (32-bit base integer, multiply/divide, compressed instructions). This architecture provides a lightweight instruction set for embedded systems, with compressed instructions (C) reducing code size.
+- **Platform**: Ubuntu 24.04 LTS, a stable Linux distribution, used for hosting the toolchain and running QEMU for emulation.
 
-## Objective
-Compile a simple "Hello, RISC-V" program using the cross-compiler.
+### Steps
+The goal is to set up the RISC-V GNU toolchain, which includes the compiler (`gcc`), debugger (`gdb`), and utilities (`objdump`, `objcopy`).
 
-## C Program: helloworld.c
-```bash
-gedit helloworld.c
-```
-```c
-#include <stdio.h>
+1. **Download and Extract the Prebuilt Toolchain**:
+   ```bash
+   wget https://vsd-labs.sgp1.cdn.digitaloceanspaces.com/vsd-labs/riscv-toolchain-rv32imac-x86_64-Ubuntu.tar.gz
+   tar -xzvf riscv-toolchain-rv32imac-x86_64-Ubuntu.tar.gz
+   mv riscv $HOME/riscv
+Explanation: Downloads a prebuilt toolchain for RV32IMAC, extracts it, and moves it to $HOME/riscv for easy access.
 
-int main() {
-    printf("Hello, World!\n");
+2. **Update the PATH Environment Variable**:
+   ```bash
+   echo 'export PATH=$HOME/riscv/bin:$PATH' >> ~/.bashrc
+   source ~/.bashrc
+Explanation: Adds the toolchain binaries to the system PATH, ensuring tools like riscv32-unknown-elf-gcc are accessible from the terminal.
+
+3. **Verify the Installation**:
+   ```bash
+   riscv32-unknown-elf-gcc --version
+   riscv32-unknown-elf-gdb --version
+   riscv32-unknown-elf-objdump --version
+   
+Explanation: Confirms that the gcc compiler, gdb debugger, and objdump disassembler are installed. The prefix riscv32-unknown-elf indicates the target (32-bit RISC-V, ELF format for bare-metal).
+
+
+
+
+  
+## Task 2: Compiling a RISC-V C Program
+
+
+
+### Objective
+Write, compile, and verify a simple "Hello, RISC-V!" C program to test the toolchain.
+
+### Architecture & Platform
+- **Architecture**: RISC-V RV32IMC. The base integer instructions (I) handle basic operations, while compressed instructions (C) optimize for smaller code size.
+- **Platform**: Ubuntu 24.04 LTS, providing the environment for compilation and verification.
+
+### Code
+
+      #include <stdio.h>
+      int main() {
+       printf("Hello, RISC-V!\n");
+      return 0;
+      }
+Explanation: This program tests the toolchain by printing a message. Since we’re targeting a bare-metal environment, stdio.h functions like printf may not output directly without UART setup (addressed in later tasks). The focus here is on successful compilation.
+
+   ### Compile
+    riscv32-unknown-elf-gcc -o hello.elf hello.c
+Explanation: Compiles the C code into an ELF file (hello.elf), a common format for RISC-V bare-metal programs.
+
+   ### Verify ELF
+    file hello.elf
+Explanation: The file command checks the type of the compiled binary, confirming it’s a 32-bit RISC-V ELF executable.
+
+
+
+## Task 3: C to Assembly Conversion
+
+**Status:** Completed
+
+### Objective
+Convert the C code to RISC-V assembly to understand how the compiler translates high-level code.
+
+###  Architecture & Platform
+- **Architecture**: RISC-V RV32IMC. The integer instructions (I) are used for basic operations, and the assembly output reflects this.
+- **Platform**: Ubuntu 24.04 LTS, used for running the compiler and generating assembly.
+
+### Code
+    #include <stdio.h>
+    int main() {
+    printf("Hello, RISC-V!\n");
     return 0;
-}
-
-```
-Save and close the .c file.
-
-
-## Compilation Command
-```bash
-riscv32-unknown-elf-gcc -march=rv32imac -mabi=ilp32 -o helloworld.elf helloworld.c
-```
-
-### Explanation of Flags
-| Flag                      | Meaning                                                       |
-| ------------------------- | ------------------------------------------------------------- |
-| `riscv32-unknown-elf-gcc` | RISC-V GCC compiler for 32-bit bare-metal targets (no OS)     |
-| `-march=rv32imc`          | Target **RISC-V 32-bit** architecture with **IMC extensions** |
-| `-mabi=ilp32`             | Use **ILP32** ABI (int, long, pointer = 32 bits)              |
-| `helloworld.c`            | Your **C source file**                                        |
-| `-o helloworld.elf`       | Name of the output **ELF executable**                         |
-
-## ELF Verification
-```bash
-file helloworld.elf
-```
-The output confirms:
-
-- The ELF is 32-bit
-- It’s for the RISC-V architecture
-- Uses the compressed instructions (RVC)
-- Uses soft-float ABI(Application Binary Interface) (floating point handled in software)
-- It’s statically linked
-
-
-
-
-# Task 3: From C to Assembly
-
-## Objective
-Generate the RISC-V assembly (`.s`) file from the C source and understand the prologue/epilogue.
-
-## Command Used
-```bash
-riscv32-unknown-elf-gcc -S -O0 helloworld.c
-```
-
-This creates `hello.s` containing the assembly code in the same directory.
-!
-## Contents of .s file
-```bash
-  	.file	"helloworld.c"
-	.option nopic
-	.attribute arch, "rv32i2p1_m2p0_a2p1_c2p0"
-	.attribute unaligned_access, 0
-	.attribute stack_align, 16
-	.text
-	.section	.rodata
-	.align	2
-.LC0:
-	.string	"Hello, World!"
-	.text
-	.align	1
-	.globl	main
-	.type	main, @function
-main:
-	addi	sp,sp,-16
-	sw	ra,12(sp)
-	sw	s0,8(sp)
-	addi	s0,sp,16
-	lui	a5,%hi(.LC0)
-	addi	a0,a5,%lo(.LC0)
-	call	puts
-	li	a5,0
-	mv	a0,a5
-	lw	ra,12(sp)
-	lw	s0,8(sp)
-	addi	sp,sp,16
-	jr	ra
-	.size	main, .-main
-	.ident	"GCC: (g04696df096) 14.2.0"
-	.section	.note.GNU-stack,"",@progbits
-```
-
-### What is the prologue and Epilogue?
-The function prologue is the set of instructions at the beginning of a function that:
-- Saves the return address (so the function can return properly),
-- Saves any callee-saved registers it will use,
-- Sets up the stack frame (allocates space on the stack),
-- Prepares the environment for the function body.
-
-In RISC-V assembly, a typical prologue includes instructions like:
-```
-    addi sp, sp, -16     # allocate stack space (adjust stack pointer)
-    sw ra, 12(sp)        # save return address on stack
-    sw s0, 8(sp)         # save frame pointer (s0) on stack
-    addi s0, sp, 16      # set frame pointer to current stack pointer + offset
-```
-The function epilogue is the code at the end of the function that:
-- Restores the saved registers,
-- Restores the stack pointer to its original value,
-- Returns control to the caller.
-- Typical epilogue instructions:
-
-```
-lw ra, 12(sp)        # restore return address
-lw s0, 8(sp)         # restore frame pointer
-addi sp, sp, 16      # deallocate stack space (reset stack pointer)
-ret                  # return to caller
-```
-
-# Task 4: Hex Dump & Disassembly
-
-##  Objective
-Convert the compiled ELF file into:
-- A raw Intel HEX format file
-- A human-readable disassembly using `objdump`
-
-##  Commands Used
-
-```bash
-riscv32-unknown-elf-objcopy -O ihex hello.elf hello.hex 
-riscv32-unknown-elf-objdump -d hello.elf > hello.asm
-```
-The first command is used for creating a raw HEX from the ELF file
-The second command is to disassemble the HEX file using objdump to a .asm file in the same directory
-
-
-### Output .asm file created by disassembly by objdump
-
-
-## Breakdown of the instruction fields in main
-| Column           | Meaning                                                     |
-| ---------------- | ----------------------------------------------------------- |
-| `0:`             | Offset address within the function or section               |
-| `10162`          | Actual machine code in hex (the instruction in binary form) |
-| `addi sp,sp,-16` | Human-readable disassembly of the machine code              |
-
-Mnemonic
-This is the operation name, like:
-- addi (add immediate),
-- lw (load word),
-- sw (store word),
-- jal (jump and link).
-- It tells what the instruction does, just like function names in C.
-
-Operands
-These are the inputs and destination for the instruction:
-- Registers (e.g., sp, a0, s0, etc.)
-- Immediate values (constants, like -16)
-- Addresses (for branches/jumps or memory access)
-
-# Task 5: ABI and Register cheat sheet
-## Objective
-List all 32 RV32 integer registers with their:
-- ABI Names - Application Binary Interface
-- typical calling-convention roles
-
-| Register | ABI Name | Description                          | Calling Convention Role |
-|----------|----------|--------------------------------------|-------------------------|
-| x0       | zero     | Hard-wired zero                      | Immutable constant zero |
-| x1       | ra       | Return address                       | Caller-saved            |
-| x2       | sp       | Stack pointer                        | Callee-saved            |
-| x3       | gp       | Global pointer                       | Unallocatable           |
-| x4       | tp       | Thread pointer                       | Unallocatable           |
-| x5       | t0       | Temporary register 0                 | Caller-saved            |
-| x6       | t1       | Temporary register 1                 | Caller-saved            |
-| x7       | t2       | Temporary register 2                 | Caller-saved            |
-| x8       | s0/fp    | Saved register 0 / Frame pointer     | Callee-saved            |
-| x9       | s1       | Saved register 1                     | Callee-saved            |
-| x10      | a0       | Function argument 0 / Return value 0 | Caller-saved            |
-| x11      | a1       | Function argument 1 / Return value 1 | Caller-saved            |
-| x12      | a2       | Function argument 2                  | Caller-saved            |
-| x13      | a3       | Function argument 3                  | Caller-saved            |
-| x14      | a4       | Function argument 4                  | Caller-saved            |
-| x15      | a5       | Function argument 5                  | Caller-saved            |
-| x16      | a6       | Function argument 6                  | Caller-saved            |
-| x17      | a7       | Function argument 7                  | Caller-saved            |
-| x18      | s2       | Saved register 2                     | Callee-saved            |
-| x19      | s3       | Saved register 3                     | Callee-saved            |
-| x20      | s4       | Saved register 4                     | Callee-saved            |
-| x21      | s5       | Saved register 5                     | Callee-saved            |
-| x22      | s6       | Saved register 6                     | Callee-saved            |
-| x23      | s7       | Saved register 7                     | Callee-saved            |
-| x24      | s8       | Saved register 8                     | Callee-saved            |
-| x25      | s9       | Saved register 9                     | Callee-saved            |
-| x26      | s10      | Saved register 10                    | Callee-saved            |
-| x27      | s11      | Saved register 11                    | Callee-saved            |
-| x28      | t3       | Temporary register 3                 | Caller-saved            |
-| x29      | t4       | Temporary register 4                 | Caller-saved            |
-| x30      | t5       | Temporary register 5                 | Caller-saved            |
-| x31      | t6       | Temporary register 6                 | Caller-saved            |
-
-# Task 6: Stepping with GDB 
-## Objective
-Debug a RISC-V ELF binary (`helloworld.elf`) using GDB, view the register contents, disassemble instructions, and step through the program using QEMU's GDB remote interface.
-
-## Commands Used
-
-### Step 1: Launch QEMU with GDB Server
-```bash
-qemu-riscv32 -g 1234 helloworld.elf
-```
-- Launches QEMU and halts execution.
-- Enables a GDB server on port 1234, waiting for a debugger to connect.
-
-
-| Component    | Explanation                                                             |
-|--------------|-------------------------------------------------------------------------|
-| qemu-riscv32 | This is the QEMU emulator for a generic 32-bit RISC-V CPU.              |
-| -g 1234      | This tells QEMU to start in GDB debug mode and listen on TCP port 1234  |
-| hello.elf    | This is the compiled RISC-V ELF binary                                  |
-
-
-### Step 2: Launch GDB in another terminal
-```bash
-riscv32-unknown-elf-gdb helloworld.elf
-```
-- Starts the RISC-V version of GDB and loads the ELF with symbols.
-
-### Step 3: Connect GDB to QEMU
-```gdb
-(gdb) target remote localhost:1234
-```
-- Establishes connection with QEMU.
-
-
-### Step 4: View all the avaiable functions
-```gdb
-(gdb) info functions
-```
-
-
-### Step 5: Set Breakpoint at different functions (_start,main,exit) and Run
-```gdb
-(gdb) break _start
-(gdb) continue
-(gdb) break main
-(gdb) continue
-(gdb) break exit
-(gdb) continue
-```
-- Execution halts at the corresponding function.
-
-### Step 6: Step Through and Inspect
-```gdb
-(gdb) step
-(gdb) info reg a0
-(gdb) disas /r
-```
-- Step through the program.
-- Inspect register contents (`a0`, `sp`, `ra`, etc.).
-- Disassemble code to view human-readable assembly.
-
-
-
----
-## Learnings
-- Cross-compilation for RISC-V
-- ELF generation with correct architecture
-- QEMU emulation
-- Remote debugging with GDB
-- Proper program execution flow
-The "Hello, World!" appearing in Terminal 1 is the definitive proof that the RISC-V program executed successfully. 
- 
- 
-The cross-compilation chain worked perfectly:
-
-- ✅ C source compiled to RV32IMC ELF
-- ✅ ELF loads and runs on RISC-V emulation
-- ✅ printf() function works correctly
-- ✅ Program terminates normally with exit code 0
-- ✅ GDB can debug the RISC-V binary remotely
-
-# Task 7: Running Under an Emulator (QEMU)
-
-## Objective
-Execute a bare-metal RISC-V ELF binary using emulators (Spike and QEMU) to simulate real hardware execution and observe UART console output in a production-like environment.
-
-
-## Creating a bare-metal .c file to print "Hello World"
-```c
-// Working Hello World bare-metal program 
-#define UART_BASE 0x10000000
-void _start(void) {
-    // Initialize stack pointer - this is crucial!
-    asm volatile ("li sp, 0x80400000");
-    // Direct UART access - no function calls
-
-    volatile unsigned char *uart = (volatile unsigned char *)UART_BASE;
-    // Print "Hello, World!\n"
-    char *msg1 = "Hello, World!\n";
-
-    while (*msg1) {
-
-        *uart = *msg1;
-
-        msg1++;
-
     }
-    // Print "This is bare-metal RISC-V!\n"
+Explanation: The same code from Task 2 is used to generate assembly.
 
-    char *msg2 = "This is bare-metal RISC-V!\n";
+### Generate Assembly
+    riscv32-unknown-elf-gcc -S -O0 hello.c -o hello.s
+    less hello.s
+Explanation: The -S flag generates assembly code (.s file). -O0 disables optimizations for readable output.
 
-    while (*msg2) {
-
-        *uart = *msg2;
-
-        msg2++;
-
-    }
-
-    // Halt execution with infinite loop
-
-    while (1) {
-        asm volatile ("wfi");  // Wait for interrupt (saves power)
-    }
-}
-```
-## Creating a linker script - .ld
-
-```c
-ENTRY(_start)
-MEMORY {
-
-    RAM : ORIGIN = 0x80200000, LENGTH = 126M
-
-}
-SECTIONS {
-    .text : {
-
-        *(.text)
-
-        *(.text.*)
-
-    } > RAM
-    .data : {
-
-        *(.data)
-
-        *(.data.*)
-    } > RAM
-    .bss : {
-
-        *(.bss)
-
-        *(.bss.*)
-
-    } > RAM
-}
-```
-## Why the above approach
-A linker script (.ld file) is a plain-text configuration file used by the linker (ld) to control how your program's code and data are laid out in memory.
-
-Why Do We Need It?
-In embedded systems (like RISC-V development), we don't have an operating system to manage memory. So we must tell the linker:
-- Where the code (like _start, main) should go
-- Where to place data, bss, and stack
-- How to organize segments in Flash (ROM) and RAM
-- Without this, the program won't know where to load and run from.
-
-
-### Why this .c file and not a general .c file with printf() statements?
-- This is a bare metal code that directly writes characters to the memory-mapped UART (at address 0x10000000)
-- Uses _start() as the entry point, not main()
-- Does not use any standard C libraries
-- Runs on hardware (or emulated hardware like QEMU) without an operating system
-- However printf version: Needs a richer runtime, not suitable for truly bare-metal
-
-### Why This Approach Matters:
-- **Real-world relevance**: Mirrors actual embedded development workflow
-- **Hardware understanding**: Demonstrates system-level programming skills
-- **Testing methodology**: Shows production verification techniques
-- **Progressive learning**: Builds upon previous debugging experience
-
----
-## Commands Used
-
-### Using QEMU System Emulator
-```bash
-riscv32-unknown-elf-gcc -march=rv32imac -mabi=ilp32 -nostdlib -nostartfiles -ffreestanding -T bm.ld -o hello_bm.elf hello_bm.c //for compiling and getting .elf file
-qemu-system-riscv32 -nographic -machine virt -kernel hello_bm.elf
-
-```
-- `qemu-system-riscv32`: Full system emulation for RISC-V 32-bit
-- `-nographic`: Disables graphical output, redirects console to terminal
-- `-kernel hello_bm.elf`: Loads ELF as kernel image for bare-metal execution
-
----
+### Key Assembly Snippet
+    addi sp,sp,-16   # Allocate stack space
+    sw   ra,12(sp)   # Save return address
+Explanation:  
+- addi sp,sp,-16: Allocates 16 bytes on the stack for the function’s frame.  
+- sw ra,12(sp): Saves the return address (ra) for function return.
 
 
 
-## Key Learnings and Comparison
 
-| Aspect              | Task 6 (GDB)           | Task 7 (Emulator)        |
-|---------------------|------------------------|--------------------------|
-| **Purpose**         | Debugging & Analysis   | Execution & Testing      |
-| **Control**         | Interactive stepping   | Continuous execution     |
-| **Visibility**      | Instruction-level      | Output-level only        |
-| **Environment**     | Debug simulator        | Hardware simulation      |
-| **Use Case**        | "What's happening?"    | "Does it work?"          |
-
-# Task 8: Exploring GCC Optimisation 
-
-## Objective
-Observe the differences that appear in the .s files by using two types of gcc optimisation
-
-## Commands Used
-```bash
-riscv32-unknown-elf-gcc -S -O0 helloworld.c -o heloworld_1.s
-riscv32-unknown-elf-gcc -S -O2 helloworld.c -o heloworld_2.s
-```
-
-## Output .s files of -O0 and -O2 optimisation (LHS : -O0; RHS : -O2)
+## Task 4: Disassembly & Hex Dump
 
 
-## Explanation of Differences
 
-| Aspect                    | `-O0`                                  | `-O2`                                   |
-| ------------------------- | -------------------------------------- | --------------------------------------- |
-| **Prologue/Epilogue**     | Creates stack frame, saves/restores RA | No stack frame needed                   |
-| **Temporary Variables**   | Stored in memory                       | Eliminated                              |
-| **Loads/Stores**          | Multiple unnecessary memory accesses   | Removed via register usage              |
-| **Function Overhead**     | Conservative; preserves state          | Aggressive optimization; minimal code   |
-| **Dead Code Elimination** | Not done                               | Performed (eliminates unused variables) |
+### Objective
+Disassemble the ELF and generate binary/hex outputs to inspect the machine code.
 
-### Why these differences?
--O0 prioritizes debuggability:
-  - Keeps variables in memory
-  - Avoids instruction reordering
-  - Easier to inspect with a debugger
+### Architecture & Platform
+- **Architecture**: RISC-V RV32IMC. The disassembled instructions are from the base integer set (I).
+- **Platform**: Ubuntu 24.04 LTS, used for running objdump and hexdump.
 
-
--O2 focuses on execution speed and code size:
-  - Eliminates redundant loads/stores
-  - Removes unnecessary variables and stack usage
-  - Performs constant folding, inlining, strength reduction, etc.
-
-# Task 9: Inline Assembly Basics 
-
-## Objective
-Implement a C function to read the RISC-V cycle counter using inline assembly and provide detailed explanation of assembly constraints.
-
-## Commands Used
-```bash
-riscv32-unknown-elf-gcc -march=rv32imac_zicsr -mabi=ilp32 -nostdlib -nostartfiles -T linker.ld -o inline.elf start.S inline.c
-qemu-system-riscv32 -nographic -machine virt -kernel inline.elf
-```
-
-## A function that returns the cycle counter by reading CSR 0xC00 using inline asm
-```c
-static inline uint32_t rdcycle(void) {
-    uint32_t c;
-    asm volatile ("csrr %0, 0xC00" : "=r"(c));
-    return c;
-}
-```
-## A bare metal .c to print the cycle counter value 
-
-```c
-
-// rdcycle_std.c - RISC-V cycle counter with standard headers
-#include <stdint.h>
-
-#define UART_BASE 0x10000000
-
-// RISC-V cycle counter function using CSR 0xC00
-static inline uint32_t rdcycle(void) {
-    uint32_t c;
-    asm volatile ("csrr %0, 0xC00" : "=r"(c));
-    return c;
-}
-
-// Simple UART output function
-void uart_putc(char c) {
-    volatile uint8_t *uart = (volatile uint8_t *)UART_BASE;
-    *uart = c;
-}
-
-void uart_puts(const char *str) {
-    while (*str) {
-        uart_putc(*str);
-        str++;
-    }
-}
-
-void uart_puthex(uint32_t value) {
-    char hex[] = "0123456789ABCDEF";
-    uart_puts("0x");
-    for (int i = 28; i >= 0; i -= 4) {
-        uart_putc(hex[(value >> i) & 0xF]);
-    }
-}
-
-int main(void) {
-    uart_puts("Testing cycle counter...\n");
-    
-    // Read cycle counter using CSR 0xC00
-    uint32_t cycle_value = rdcycle();
-    
-    uart_puts("Cycle read successful!\n");
-    uart_puts("Cycle value: ");
-    uart_puthex(cycle_value);
-    uart_putc('\n');
-    
-    
+### Code
+    #include <stdio.h>
+    int main() {
+    printf("Hello, RISC-V!\n");
     return 0;
-}
-```
-
-## A startup file .S 
-Since the linker expects an entry point symbol _start (by default), we write a minimal assembly start that sets up the stack pointer and calls main.
-```c
-    .section .text
-    .globl _start
-_start:
-    la sp, _stack_top        # Set stack pointer to top of stack
-    call main                # Call main()
-    # If main returns, loop forever
-1:
-    wfi
-    j 1b
-
-    .section .bss
-    .space 4096              # reserve 4KB stack space (adjust as needed)
-_stack_top:
-
-```
-## Commands Used
-```bash
-riscv32-unknown-elf-gcc -march=rv32imac_zicsr -mabi=ilp32 -nostdlib -nostartfiles -T linker.ld -o inline.elf start.S inline.c
-qemu-system-riscv32 -machine virt -nographic -kernel inline.elf
-```
-
-
-## Explanation of Components
-1. asm volatile(...)
-    - This tells the compiler to insert inline assembly into the C code.
-    - asm: keyword for GCC-style inline assembly.
-    - volatile: tells the compiler not to optimize away or reorder this assembly instruction.
-    - Without volatile, the compiler might remove or move this line if it thinks it has no side effects (since the output c is not guaranteed to be used immediately).
-
-
-2. "csrr %0, cycle"
-    - This is the RISC-V assembly instruction that reads the cycle CSR (0xC00).
-    - csrr: Control and Status Register Read instruction
-    - %0: placeholder for the first output operand (in this case, c)
-    - It tells the assembler: “substitute this with a register that will hold the output.”
-
-
-3. "=r"(c)
-    - his is the output operand constraint, which tells the compiler:
-    - =: this is write-only (output-only). The value of c is written by the instruction.
-    - r: use a general-purpose register to hold the value of cycle.
-    - (c): bind this output to the C variable c.
-
-
-# Task 10:  Memory-Mapped I/O Demo
-## Objective
-Toggle a GPIO register located at address 0x10012000 using bare-metal C, and prevent the compiler from optimizing away the memory access.
-
-## Commands Used
-```bash
-riscv32-unknown-elf-gcc -march=rv32imac_zicsr -mabi=ilp32 -nostdlib -nostartfiles -T linker.ld -o tog.elf start.S tog.c
-qemu-system-riscv32 -machine virt -nographic -kernel tog.elf
-```
-
-## Bare-metal toggle program
-```c
-#include <stdint.h>
-#define UART_BASE 0x10000000
-#define UART_THR  (*(volatile uint8_t *)(UART_BASE + 0x00))  // UART transmit register
-#define GPIO_ADDR 0x10012000
-
-void uart_putc(char c) {
-    UART_THR = c;
-}
-
-void uart_puts(const char *s) {
-    while (*s) uart_putc(*s++);
-}
-
-void delay() {
-    for (volatile int i = 0; i < 100000; ++i);
-}
-
-int main() {
-    volatile uint32_t *gpio = (volatile uint32_t *)GPIO_ADDR;
-
-    uart_puts("GPIO set HIGH\n");
-    *gpio = 0x1;        // Set GPIO high
-    delay();
-
-    uart_puts("GPIO set LOW\n");
-    *gpio = 0x0;        // Set GPIO low
-
-    // Halt the processor using `wfi` (wait for interrupt)
-    while (1) {
-        __asm__ volatile ("wfi");
     }
-}
+Explanation: The same code from Task 2 is used for disassembly.
 
-```
+###  Commands
+    riscv32-unknown-elf-objcopy -O binary hello.elf hello.bin
+    riscv32-unknown-elf-objcopy -O ihex hello.elf hello.hex
+    riscv32-unknown-elf-objdump -d hello.elf
+    hexdump -C hello.bin
+Explanation:  
+- objcopy -O binary: Converts ELF to raw binary.  
+- objcopy -O ihex: Converts ELF to Intel HEX format.  
+- objdump -d: Disassembles the ELF into RISC-V instructions.  
+- hexdump -C: Displays the binary in hexadecimal.
 
-## Startup and linker file
-```bash
-    .section .text
-    .globl _start
-_start:
-    la sp, _stack_top        # Set stack pointer to top of stack
-    call main                # Call main()
-    # If main returns, loop forever
-1:
-    wfi
-    j 1b
-
-    .section .bss
-    .space 4096              # reserve 4KB stack space (adjust as needed)
-_stack_top:
-```
+###  Disassembly Breakdown
+- **Address**: Memory location (e.g., 0x00010100).  
+- **Opcode**: Machine code (e.g., 0x01312623).  
+- **Mnemonic**: Instruction (e.g., sw).  
+- **Operands**: Arguments (e.g., ra,12(sp)).
 
 
-```bash
-ENTRY(_start)
 
-MEMORY {
-    FLASH : ORIGIN = 0x80200000, LENGTH = 4M   /* For code, read+execute */
-    RAM   : ORIGIN = 0x80600000, LENGTH = 12M  /* For data, read+write */
-}
+## Task 5: ABI & Register Cheat-Sheet
 
-SECTIONS {
+
+
+### Objective
+List all 32 RV32 integer registers with their ABI names and calling-convention roles.
+
+###  Architecture & Platform
+- **Architecture**: RISC-V RV32IMC. The ABI defines how registers are used in RV32.
+- **Platform**: Ubuntu 24.04 LTS, used for referencing the ABI during GDB debugging.
+
+###  Register Table: RV32I Registers & ABI Roles
+| Register | ABI Name | Role in Calling Convention         | Description                          |
+|----------|----------|------------------------------------|--------------------------------------|
+| x0       | zero     | Constant zero                     | Always zero, writes ignored          |
+| x1       | ra       | Return address                    | Set by jal for function returns      |
+| x2       | sp       | Stack pointer                     | Points to top of stack               |
+| x3       | gp       | Global pointer                    | Points to global data region         |
+| x4       | tp       | Thread pointer                    | Points to thread-local storage       |
+| x5       | t0       | Temporary (caller-saved)          | Not preserved across calls           |
+| x6       | t1       | Temporary (caller-saved)          | Not preserved across calls           |
+| x7       | t2       | Temporary (caller-saved)          | Not preserved across calls           |
+| x8       | s0/fp    | Saved register / Frame pointer    | Callee-saved, often used as FP       |
+| x9       | s1       | Saved register (callee-saved)     | Preserved across calls               |
+| x10      | a0       | Function argument / return value [0] | Used to pass args/return values   |
+| x11      | a1       | Function argument / return value [1] | Used to pass args/return values   |
+| x12      | a2       | Function argument [2]             | Up to 8 args passed via a0–a7        |
+| x13      | a3       | Function argument [3]             |                                      |
+| x14      | a4       | Function argument [4]             |                                      |
+| x15      | a5       | Function argument [5]             |                                      |
+| x16      | a6       | Function argument [6]             |                                      |
+| x17      | a7       | Function argument [7]             |                                      |
+| x18      | s2       | Saved register (callee-saved)     | Preserved across calls               |
+| x19      | s3       | Saved register (callee-saved)     | Preserved across calls               |
+| x20      | s4       | Saved register (callee-saved)     | Preserved across calls               |
+| x21      | s5       | Saved register (callee-saved)     | Preserved across calls               |
+| x22      | s6       | Saved register (callee-saved)     | Preserved across calls               |
+| x23      | s7       | Saved register (callee-saved)     | Preserved across calls               |
+| x24      | s8       | Saved register (callee-saved)     | Preserved across calls               |
+| x25      | s9       | Saved register (callee-saved)     | Preserved across calls               |
+| x26      | s10      | Saved register (callee-saved)     | Preserved across calls               |
+| x27      | s11      | Saved register (callee-saved)     | Preserved across calls               |
+| x28      | t3       | Temporary (caller-saved)          | Not preserved across calls           |
+| x29      | t4       | Temporary (caller-saved)          | Not preserved across calls           |
+| x30      | t5       | Temporary (caller-saved)          | Not preserved across calls           |
+| x31      | t6       | Temporary (caller-saved)          | Not preserved across calls           |
+
+###  Calling Convention Summary
+| Register Type   | Names    | Saved By | Used For                          |
+|-----------------|----------|----------|-----------------------------------|
+| Argument/Return | a0–a7    | Caller   | Function arguments, return values |
+| Temporaries     | t0–t6    | Caller   | Scratch data, not preserved       |
+| Saved (Callee)  | s0–s11   | Callee   | Must be preserved across calls    |
+| Special         | sp, ra, gp, tp | N/A    | Stack, return address, global/thread ptrs |
+| Constant        | zero     | N/A      | Always reads 0, writes ignored    |
+
+
+##  Task 6: Debugging with GDB
+
+
+### Objective
+Debug the program using GDB with QEMU to step through instructions and inspect registers.
+
+###  Architecture & Platform
+- **Architecture**: RISC-V RV32IMC. Debugging uses base integer instructions (I) and the ABI for register inspection.
+- **Platform**: Ubuntu 24.04 LTS, hosting QEMU and GDB for debugging.
+
+###  Code
+    #include <stdio.h>
+    int main() {
+       printf("Hello, RISC-V!\n");
+       return 0;
+    }
+Explanation: The same code from Task 2 is used for debugging.
+
+### Terminal 1: QEMU
+    qemu-riscv32 -g 1234 hello.elf
+Explanation: Runs the ELF in QEMU with a GDB server on port 1234.
+
+### Terminal 2: GDB
+     riscv32-unknown-elf-readelf -h hello.elf | grep Entry
+     riscv32-unknown-elf-gdb hello.elf
+    (gdb) target remote :1234
+    (gdb) break main
+    (gdb) continue
+    (gdb) stepi
+    (gdb) info registers a0
+    (gdb) disassemble main
+Explanation:  
+- target remote :1234: Connects GDB to QEMU.  
+- break main: Sets a breakpoint at main.  
+- continue: Runs until the breakpoint.  
+- stepi: Steps one instruction.  
+- info registers a0: Displays a0’s value.  
+- disassemble: Shows assembly around the current instruction.
+
+###  Observation
+Explanation: QEMU doesn’t print to UART, but a0 holds the address of "Hello, RISC-V!", confirming printf executed.
+
+
+
+## Task 7: Bare-Metal Execution with QEMU
+
+
+
+### Objective
+Run a bare-metal ELF using QEMU and OpenSBI to simulate a real RISC-V system.
+
+###  Architecture & Platform
+- **Architecture**: RISC-V RV32IMC. Bare-metal execution uses the base integer set (I) for minimal setup.
+- **Platform**: Ubuntu 24.04 LTS, running QEMU for emulation and OpenSBI for firmware.
+
+###  Code: Bare-Metal UART Program
+     volatile char *uart = (char *)0x10000000;
+     void main()
+     {
+     const char *msg = "Hello, RISC-V!\n";
+     while (*msg) {
+     *uart = *msg++;
+     }
+     while(1);
+     }
+Explanation: A bare-metal program that uses UART to output a message.
+
+###  Startup Code
+
+      .section .text
+      .global _start
+      _start:
+       la sp, _stack_top
+       call main
+       j .
+      .section .bss
+      .align 4
+      .space 1024
+      _stack_top:
+Explanation: Sets up the stack pointer and jumps to main.
+
+###  Linker Script
+    OUTPUT_ARCH(riscv)
+    ENTRY(_start)
+    MEMORY
+    SECTIONS
+    {
+    . = 0x80200000;
+    .text : { *(.text*)}
+    .rodata : { *(.rodata*)}
+    .data : { *(.data*)}
+    .bss : { *(.bss*) *(COMMON)}
+    }
+Explanation: Defines memory layout for FLASH and RAM, placing sections appropriately.
+
+###  Commands
+      curl -LO https://github.com/qemu/qemu/raw/v8.0.4/pc-bios/opensbi-riscv32-generic-fw_dynamic.bin
+      riscv32-unknown-elf-gcc -g -march=rv32im -mabi=ilp32 inostdlib -T linker.ld -o hello2.elf hello2.c startup.s
+      qemu-system-riscv32 -nographic -machine virt -bios opensbi-riscv32-generic-fw_dynamic.bin -kernel hello2.elf
+Explanation:  
+- Downloads OpenSBI firmware for RISC-V booting.  
+- qemu-system-riscv32: Emulates a RISC-V system using the virt machine.  
+- -nographic: Uses terminal I/O.  
+- -bios: Loads OpenSBI firmware.  
+- -kernel: Executes the ELF.
+
+
+
+## Task 8: GCC Optimization Analysis
+
+
+
+### Objective
+Compare assembly output with -O0 vs. -O2 to see how optimization affects code generation.
+
+###  Architecture & Platform
+- **Architecture**: RISC-V RV32IMC. Optimizations affect how integer instructions (I) are generated.
+- **Platform**: Ubuntu 24.04 LTS, running gcc for assembly generation.
+
+###  Code
+   
+    #include <stdio.h>
+    int main() {
+       printf("Hello, RISC-V!\n");
+       return 0;
+    }
+Explanation: The same code from Task 2 is used for optimization analysis.
+
+###  Commands
+
+    riscv32-unknown-elf-gcc -S -O0 hello.c -o helloO0.s
+    riscv32-unknown-elf-gcc -S -O2 hello.c -o helloO2.s
+    ls -la helloO0.s
+    ls -la helloO2.s
+    wc -l helloO0.s
+    wc -l helloO2.s
+    grep -A 20 "main:" helloO0.s
+    grep -A 20 "main:" helloO2.s
+    diff -y helloO0.s helloO2.s
+Explanation:  
+- -O0: No optimization, verbose assembly.  
+- -O2: Aggressive optimization, smaller code.  
+- ls -la, wc -l: Compare file sizes and line counts.  
+- grep -A 20 "main:": Extracts main’s assembly.  
+- diff -y: Shows differences side by side.
+
+###  Observations
+Explanation:  
+- -O2 produces smaller assembly (fewer lines).  
+- Redundant stack operations removed.  
+- printf setup optimized.
+
+
+   
+##  Task 9: Inline Assembly Basics
+
+
+
+### Objective
+Use inline assembly to read the RISC-V cycle counter and measure execution time of a simple operation.
+
+###  Architecture & Platform
+- **Architecture**: RISC-V RV32IMC. Uses the rdcycle instruction from the base set (I).
+- **Platform**: Ubuntu 24.04 LTS, running QEMU for bare-metal execution.
+
+###  Code
+
+    #include <stdint.h>
+
+    #define UART_TX 0x10000000
+    #define UART_READY 0x10000005
+   
+    void uart_putc(char c) {
+       volatile char* uart_tx = (volatile char*)UART_TX;
+       volatile char* uart_ready = (volatile char*)UART_READY;
+       while (!(*uart_ready & (1 << 5)));
+       *uart_tx = c;
+    }
+   
+    void uart_puts(const char* s) {
+       while (*s) uart_putc(*s++);
+    }
+   
+    uint32_t read_cycle_counter(void) {
+       uint32_t cycles;
+       __asm__ volatile (
+           "rdcycle %0"
+           : "=r" (cycles)
+           :
+           :
+       );
+       return cycles;
+    }
+   
+    void uart_put_num(uint32_t num) {
+        if (num == 0) {
+           uart_putc('0');
+       } else {
+           char buf[10];
+           int i = 0;
+           while (num > 0) {
+               buf[i++] = '0' + (num % 10);
+               num /= 10;
+           }
+           while (i > 0) uart_putc(buf[--i]);
+       }
+    }
+   
+    int main() {
+       uint32_t start = read_cycle_counter();
+       volatile int x = 42;
+       x = x + 1;
+       uart_puts("Value of x: ");
+       uart_put_num(x);
+       uart_puts("\n");
+       uint32_t end = read_cycle_counter();
+       uart_puts("Cycles taken: ");
+       uart_put_num(end - start);
+       uart_puts("\n");
+       return x;
+    }
+### Cycle counter
+      #include <stdint.h>
+      // Function to read the 32-bit cycle counter from CSR 0xC00
+      uint32_t read_cycle_counter(void) {
+          uint32_t cycles;
+          __asm__ volatile (
+              "rdcycle %0"
+              : "=r" (cycles) // Output constraint
+              :               // No input constraints
+              :               // No clobbered registers
+          );
+          return cycles;
+      }
+      
+Explanation: Uses inline assembly to read the cycle counter and measure a simple operation’s execution time.
+
+###  Linker Script
+    OUTPUT_ARCH(riscv)
+    ENTRY(_start)
+    MEMORY
+    {
+    FLASH (rx) : ORIGIN = 0x80000000, LENGTH = 16M
+    RAM (rw)   : ORIGIN = 0x81000000, LENGTH = 16M
+    }
+    SECTIONS
+    {
+    . = 0x80000000;
     .text : {
-        *(.text*)
+    *(.text.start)
+     *(.text)
+    (.text.)
     } > FLASH
-
-    .rodata : {
-        *(.rodata*)
+    .rodata : ALIGN(4) {
+    *(.rodata)
+    (.rodata.)
     } > FLASH
-
-    .data : {
-        *(.data*)
+    .data : ALIGN(4) {
+    *(.data)
+    (.data.)
+    } > RAM AT > FLASH
+    .bss : ALIGN(4) {
+    *(.bss)
+    (.bss.)
     } > RAM
+    _end = .;
+    }
+Explanation: Defines memory layout for the bare-metal program.
+### Startup Code
+    .section .text.start
+    .global _start
+    _start:
+       la sp, _stack_top
+       jal main
+       j .
+    .section .bss
+    .align 4
+    .space 1024
+    _stack_top:
+Explanation: Sets up the stack pointer and jumps to main.
 
-    .bss : {
-        *(.bss*)
-        *(COMMON)
+###  Commands
+    riscv32-unknown-elf-gcc -g -O0 -march=rv32im -mabi=ilp32 -nostdlib -T linkertask9.ld -o task9.elf task9.c startuptask_9.s
+    qemu-system-riscv32 -nographic -machine virt -bios none -kernel task9.elf
+Explanation: Compiles and runs the program on QEMU without OpenSBI.
+ 
+
+
+## Task 10: Memory-Mapped I/O Demo
+]
+
+### Objective
+Demonstrate memory-mapped I/O by toggling a GPIO register and prevent compiler optimizations.
+
+### Architecture & Platform
+- **Architecture**: RISC-V RV32IMC. Uses base integer instructions (I) for memory-mapped I/O.
+- **Platform**: Ubuntu 24.04 LTS, running QEMU for bare-metal simulation.
+
+###  Code
+      #define GPIO_OUT 0x10012000
+      #define UART_TX 0x10000000
+      #define UART_READY 0x10000005
+   
+      typedef unsigned int uint32_t;
+   
+      void uart_putc(char c) {
+       volatile char* uart_tx = (volatile char*)UART_TX;
+       volatile char* uart_ready = (volatile char*)UART_READY;
+       while (!(*uart_ready & (1 << 5)));
+       *uart_tx = c;
+      }
+   
+      void uart_puts(const char* s) {
+       while (*s) uart_putc(*s++);
+      }
+   
+      void gpio_toggle(void) {
+       volatile uint32_t* gpio_out = (volatile uint32_t*)GPIO_OUT;
+       *gpio_out |= (1 << 0);
+       *gpio_out &= ~(1 << 0);
+      }
+   
+      int main() {
+       uart_puts("GPIO Toggled\n");
+       gpio_toggle();
+       uart_putc('B');
+       while (1) {
+           uart_putc('.');
+           for (volatile int i = 0; i < 100000; i++);
+          }
+          return 0;
+        }
+Explanation: Toggles a GPIO pin using memory-mapped I/O and outputs via UART.
+### Linker Script
+
+       OUTPUT_ARCH(riscv)
+      ENTRY(_start)
+      MEMORY
+      {
+      FLASH (rx) : ORIGIN = 0x80000000, LENGTH = 16M
+      RAM (rw)   : ORIGIN = 0x81000000, LENGTH = 16M
+      }
+      SECTIONS
+      {
+      . = 0x80000000;
+      .text : {
+      *(.text.start)
+      *(.text)
+      (.text.)
+      } > FLASH
+      .rodata : ALIGN(4) {
+      *(.rodata)
+      (.rodata.)
+      } > FLASH
+      .data : ALIGN(4) {
+      *(.data)
+      (.data.)
+      } > RAM AT > FLASH
+    .bss : ALIGN(4) {
+    *(.bss)
+    (.bss.)
     } > RAM
-}
-
-```
-
-
-## Key Concepts
-### volatile Keyword
-- Tells the compiler not to optimize access to the memory location.
-- Ensures that every read/write to *gpio actually occurs, even if it looks redundant in the code.
-- Without volatile, the compiler might optimize out writes that appear to have no side effects, which is dangerous in embedded I/O.
-
-### Memory Alignment
-- uint32_t is 4 bytes, so 0x10012000 must be 4-byte aligned — which it is.
-- Misaligned accesses can cause hardware faults or undefined behavior on some systems.
-
-# Task 11: Linker Script 101
-## Objective
-To create a  minimal linker script that places .text at 0x00000000 and .data at 0x10000000 for RV32IMC.
-
-## Linker Script
-```bash
-ENTRY(_start)
-
-SECTIONS {
-    .text 0x00000000 : {
-        *(.text)
-        *(.text.*)
+    _end = .;
     }
+Explanation: Defines memory layout for the bare-metal program.
+### Startup Code
+    .section .text.start
+    .global _start
+    _start:
+    la sp, _stack_top
+    jal main
+    j .
+    .section .bss
+     .align 4
+    .space 1024
+    _stack_top:
+Explanation: Sets up the stack pointer and jumps to main.
 
-    .data 0x10000000 : {
-        *(.data)
-        *(.data.*)
-    }
-}
+### Commands
+    riscv32-unknown-elf-gcc -g -O2 -march=rv32im -mabi=ilp32 -nostdlib -T linker10.ld -o task10.elf task10.c startup10.s
+    riscv32-unknown-elf-readelf -h task10.elf
+    qemu-system-riscv32 -nographic -machine virt -bios none -kernel task10.elf
+Explanation: Compiles, checks the ELF header, and runs the program on QEMU.
 
-```
-## Explanation: Flash vs SRAM
-1. Flash (e.g., address 0x00000000):
-    - Non-volatile storage.
-    - Stores code and sometimes constants.
-    - Read-only during runtime unless special controller access is used.
+### Output
+      GPIO Toggled
+      B.........
+Explanation: Confirms the GPIO toggle and UART output.
 
-
-2. SRAM (e.g., address 0x10000000):
-    - Volatile memory.
-    - Used for read/write data sections like .data and .bss.
-    - Loses content on power-off.
+##  Task 11: Linker Script 101
 
 
-## Reason for separation:
-- At boot, code runs from Flash.
-- Global/static variables need to be writable — placed in SRAM.
-- The bootloader or startup code often copies .data from Flash to SRAM before jumping to main().
 
-# Task 12: Start-up Code & crt0 
+### Objective
+Implement a minimal linker script for RV32IMC to place .text at 0x00000000 and .data at 0x10000000.
 
-## Objective
-To understand crt0.S role in a bare-metal RISC-V program and finding out where to get one.
+###  Architecture & Platform
+- **Architecture**: RISC-V RV32IMC. Linker script controls memory layout for RV32.
+- **Platform**: Ubuntu 24.04 LTS, used for compilation and linking.
 
-## Startup script
-```asm
-    .section .text
-    .globl _start
+###  Code
+      #include <stdint.h>
+      uint32_t global_var = 0x12345678;
+      uint32_t bss_var;
+      void test_function(void) {
+       global_var = 0xABCDEF00;
+       bss_var = 0x11111111;
+      }
+      void main(void) {
+          test_function();
+       while(1);
+      }
+Explanation: A simple program with global variables to test the linker script.
+
+### Startup Code
+
+    .section .text.start
+    .global _start
+    _start:
+       lui sp, %hi(_stack_top)
+       addi sp, sp, %lo(_stack_top)
+       call main
+    1:  j 1b
+    .size _start, . - _start
+Explanation: Sets up the stack pointer and calls main.
+
+###  Linker Script
+      ENTRY(_start)
+      MEMORY
+      {
+      FLASH (rx) : ORIGIN = 0x00000000, LENGTH = 256K
+      SRAM  (rwx): ORIGIN = 0x10000000, LENGTH = 64K
+      }
+      SECTIONS
+      {
+      .text 0x00000000 : {
+      *(.text.start)
+      (.text)
+      (.rodata)
+      } > FLASH
+      .data 0x10000000 : {
+      _data_start = .;
+      (.data)
+      _data_end = .;
+      } > SRAM
+      .bss : {
+      _bss_start = .;
+      (.bss)
+      *(COMMON)
+      _bss_end = .;
+      } > SRAM
+      _stack_top = ORIGIN(SRAM) + LENGTH(SRAM);
+      }
+Explanation: Places .text at 0x00000000 and .data at 0x10000000.
+### Build Script
+      cat << 'EOF' > build_linker_test.sh
+      #!/bin/bash
+      echo "=== Task 11: Linker Script Implementation ==="
+      echo "1. Compiling assembly and C files..."
+      riscv32-unknown-elf-gcc -c startup11.s -o startup11.o
+      riscv32-unknown-elf-gcc -c task11.c -o task11.o
+      echo "2. Linking with custom linker script..."
+      riscv32-unknown-elf-ld -T linker11.ld startup11.o task11.o -o task11.elf
+      echo "✓ Compilation and linking successful!"
+      echo -e "\n3. Verifying memory layout (section addresses):"
+      riscv32-unknown-elf-objdump -h task11.elf | grep -E "(.text|.data|.bss)"
+      echo -e "\n4. Symbol addresses (first 10):"
+      riscv32-unknown-elf-nm task11.elf | head -10
+      echo -e "\n✓ Linker script working correctly!"
+      EOF
+      chmod +x build_linker_test.sch h
+Explanation: A script to compile, link, and verify the linker script.
+
+###  Commands
+
+      chmod +x build_linker_test.sh
+      ./build_linker_test.sh
+Explanation: Makes the script executable and runs it.
+
+### Output
+#### Section Addresses
+0 .text         00001000  00000000  00000000  00001000  21
+1 .sdata        00002000  10000000  10000000  00002000  22
+2 .sbss         00002004  10000004  10000004  00002004  2**2
+#### Symbol Addresses
+10002004 D _bss_end
+10000004 D _bss_start
+10000004 B bss_var
+10000004 D _data_end
+10000000 D _data_start
+10000000 D global_var
+0000003e T main
+10010000 D _stack_top
+00000000 T _start
+0000000c T test_function
+Explanation: Confirms the memory layout and symbol addresses.
+
+
+
+## Task 12: Start-up Code & crt0
+
+### Objective
+Explain what crt0.S does in a bare-metal RISC-V program and where to get one.
+
+###  Architecture & Platform
+- **Architecture**: RISC-V RV32IMC. Start-up code uses base integer instructions (I).
+- **Platform**: Ubuntu 24.04 LTS, used for referencing start-up code examples.
+
+###  Key Responsibilities of crt0.S
+| Step | Action                     | Description                                      |
+|------|----------------------------|--------------------------------------------------|
+| 1    | Stack pointer initialization | Set sp to top of RAM for stack usage          |
+| 2    | Zero .bss section        | Clear uninitialized variables to zero           |
+| 3    | Copy .data section       | Copy initialized data from ROM to RAM           |
+| 4    | Call main()              | Transfer control to C main() function         |
+| 5    | Infinite loop after main() | Trap if main() returns (optional: halt CPU)  |
+Explanation: Outlines the main tasks of crt0.S in a bare-metal setup.
+
+### Minimal Example: crt0.S
+
+      .section .text
+      .globl _start
+      _start:
+          la sp, _stack_top
+          la a0, __bss_start
+          la a1, __bss_end
+      zero_bss:
+          beq a0, a1, bss_done
+          sw zero, 0(a0)
+          addi a0, a0, 4
+          j zero_bss
+      bss_done:
+          call main
+      hang:
+          j hang
+Explanation: A minimal crt0.S that sets up the stack, zeros .bss, and calls main.
+
+###  Summary: crt0.S Essentials
+| Component         | Purpose                                      |
+|-------------------|----------------------------------------------|
+| sp setup        | Prepares environment for stack-based calls   |
+| .bss zeroing    | Ensures uninitialized variables start as zero |
+| .data copy      | Ensures initialized data is accessible in RAM |
+| main() call     | Hands over control to user-defined code      |
+| Infinite loop     | Prevents undefined behavior if main() returns |
+Explanation: Summarizes the key components of crt0.S.
+
+### Where to Find crt0.S?
+| Source              | Use Case                                      |
+|---------------------|-----------------------------------------------|
+| **Newlib**          | Common in embedded systems                   |
+| **Platform SDKs**   | SiFive, Kendryte, Espressif SDKs             |
+| **Bare-metal Examples** | GitHub: riscv-blinky, riscv-bare-metal-template |
+| **Custom Development** | Adaptable for specific SoC/memory layout     |
+Explanation: Lists sources for obtaining or developing crt0.S.
+
+
+
+##  Task 13: Interrupt Primer
+
+**Status:** Completed
+
+### Objective
+Enable the machine-timer interrupt (MTIP) and write a simple handler in C/asm.
+
+###  Architecture & Platform
+- **Architecture**: RISC-V RV32IMC. Uses machine-mode interrupts and timer instructions.
+- **Platform**: Ubuntu 24.04 LTS, running QEMU for bare-metal simulation.
+
+### Code: Timer Interrupt Demo
+
+      #define UART_TX 0x10000000
+      #define UART_READY 0x10000005
+      #define MTIME 0x0200bff8
+      #define MTIMECMP 0x02004000
+      
+      typedef unsigned int uint32_t;
+      typedef unsigned long long uint64_t;
+      
+      void uart_putc(char c) {
+          volatile char* uart_tx = (volatile char*)UART_TX;
+          volatile char* uart_ready = (volatile char*)UART_READY;
+          while (!(*uart_ready & (1 << 5)));
+          *uart_tx = c;
+      }
+      
+      void uart_puts(const char* s) {
+          while (*s) uart_putc(*s++);
+      }
+      
+      void timer_handler(void) {
+          uart_puts("MTIP\n");
+          volatile uint64_t* mtime = (volatile uint64_t*)MTIME;
+          volatile uint64_t* mtimecmp = (volatile uint64_t*)MTIMECMP;
+          *mtimecmp = *mtime + 1000000;
+      }
+      
+      void enable_timer_interrupt(void) {
+          volatile uint64_t* mtime = (volatile uint64_t*)MTIME;
+          volatile uint64_t* mtimecmp = (volatile uint64_t*)MTIMECMP;
+          *mtimecmp = *mtime + 1000000;
+          asm volatile ("li t0, 0x80");
+          asm volatile ("csrs mie, t0");
+          asm volatile ("csrs mstatus, 0x8");
+      }
+      
+      int main() {
+          uart_putc('A');
+          enable_timer_interrupt();
+          uart_puts("Timer enabled\n");
+          while (1) {
+              uart_putc('.');
+              for (volatile int i = 0; i < 100000; i++);
+          }
+          return 0;
+      }
+Explanation: Sets up a timer interrupt and handles it with a simple handler.
+
+### Trap Handler
+
+      .section .text
+      .global trap_handler
+      .align 4
+      trap_handler:
+          addi sp, sp, -64
+          sw ra, 0(sp)
+          sw t0, 4(sp)
+          sw t1, 8(sp)
+          csrr t0, mcause
+          li t1, 0x80000007
+          bne t0, t1, skip
+          jal timer_handler
+      skip:
+          lw ra, 0(sp)
+          lw t0, 4(sp)
+          lw t1, 8(sp)
+          addi sp, sp, 64
+          mret
+Explanation: A trap handler that calls the timer handler if the interrupt is MTIP.
+
+### Startup Code
+
+      .section .text.start
+      .global _start
+      _start:
+          la sp, _stack_top
+          li t0, 0x10000005
+          li t1, 0x20
+      wait_uart:
+          lb t2, 0(t0)
+          and t2, t2, t1
+          beq t2, zero, wait_uart
+          li t0, 0x10000000
+          li t1, 'S'
+          sb t1, 0(t0)
+          la t0, trap_handler
+          csrw mtvec, t0
+          jal main
+          j .
+      .section .bss
+      .align 4
+      .space 1024
+      _stack_top:
+Explanation: Sets up the stack, waits for UART, sets the trap vector, and jumps to main.
+
+###  Linker Script
+      OUTPUT_ARCH(riscv)
+      ENTRY(_start)
+      MEMORY
+      {
+      FLASH (rx) : ORIGIN = 0x80000000, LENGTH = 16M
+      RAM   (rw) : ORIGIN = 0x81000000, LENGTH = 16M
+      }
+      SECTIONS
+      {
+      .text : {
+      *(.text.start)
+      *(.text)
+      (.text.)
+      } > FLASH
+      .rodata : ALIGN(4) {
+      *(.rodata)
+      (.rodata.)
+      } > FLASH
+      .data : ALIGN(4) {
+      *(.data)
+      (.data.)
+      } > RAM AT > FLASH
+      .bss : ALIGN(4) {
+      *(.bss)
+      (.bss.)
+      } > RAM
+      _end = .;
+      }
+Explanation: Defines memory layout for the bare-metal program.
+###  Commands
+      riscv32-unknown-elf-gcc -g -O0 -march=rv32im -mabi=ilp32 -nostdlib -T linker13.ld -o timer.elf timer_interrupt.c startup13.s trap_handler.s startup13.s
+      qemu-system-riscv32 -nographic -machine virt -bios none -kernel timer.elf
+Explanation: Compiles and runs the program on QEMU.
+
+###  Output
+      SATimer enabled
+      ........MTIP
+      MTIP
+      MTIP
+Explanation: Shows the timer interrupt firing periodically.
+
+##  Task 14: RV32IMAC vs RV32IMC – What’s the “A”?
+
+
+
+### Objective
+Explain the ‘A’ (atomic) extension in RV32IMAC, its instructions, and their usefulness.
+
+###  Architecture & Platform
+- **Architecture**: RISC-V RV32IMAC vs RV32IMC. Focuses on the atomic extension (A).
+- **Platform**: Ubuntu 24.04 LTS, used for researching and documenting ISA extensions.
+
+### 🔸 Base Comparison: RV32IMC vs RV32IMAC
+| Feature         | RV32IMC | RV32IMAC |
+|-----------------|---------|----------|
+| **I** (Base Integer) | ✅      | ✅       |
+| **M** (Multiply/Divide) | ✅   | ✅       |
+| **C** (Compressed Instr.) | ✅  | ✅       |
+| **A** (Atomic)  | ❌      | ✅       |
+Explanation: Shows the difference between RV32IMC and RV32IMAC.
+
+###  What is the "A" Extension?
+Explanation: The 'A' extension introduces atomic read-modify-write operations for safe concurrent code in multi-core systems.
+
+###  Key Atomic Instructions
+| Instruction   | Meaning               | Use Case                          |
+|---------------|-----------------------|-----------------------------------|
+| lr.w        | Load-Reserved         | Starts atomic operation           |
+| sc.w        | Store-Conditional     | Stores if reservation valid       |
+| amoadd.w    | Atomic ADD            | Adds value atomically             |
+| amoswap.w   | Atomic SWAP           | Swaps memory and register values  |
+| amoor.w     | Atomic OR             | Sets flags atomically             |
+| amoand.w    | Atomic AND            | Locks bits                        |
+| amomin.w    | Atomic Min            | Priority/resource arbitration     |
+| amomax.w    | Atomic Max            | Max-tracking use cases            |
+Explanation: Lists the main atomic instructions and their purposes.
+
+###  Importance of ‘A’
+| Purpose                  | Why It’s Needed                          |
+|--------------------------|------------------------------------------|
+| **Thread-safe Operations** | Allows safe memory sharing              |
+| **Lock-Free Programming** | Enables deadlock-free data structures   |
+| **OS Support**            | Implements mutexes, semaphores, spinlocks |
+| **Multicore Support**     | Synchronizes memory across cores        |
+
+Explanation: Highlights why the A extension is important.
+
+###  Visual Summary
+|RV32IMC                         | RV32IMAC                               |
+|--------------------------------|----------------------------------------|
+|Base + Mul/Div + Compressed     | Base + Mul/Div + Compressed + ⚡Atomic|
+|❌                             | ✅ Supports:|
+|❌                             | lr.w, sc.w|
+| ❌                            | amoadd.w, amoswap.w|
+| ❌                            |Enables thread-safe systems|
+
+Explanation: A visual comparison of RV32IMC and RV32IMAC.
+
+
+
+##  Task 15: Atomic Test Program
+
+**Status:** Completed
+
+### Objective
+Provide a two-thread mutex example (pseudo-threads in main) using lr/sc on RV32.
+
+###  Architecture & Platform
+- **Architecture**: RISC-V RV32IMAC. Uses the atomic extension (A) for lr.w and sc.w instructions to implement a mutex.
+- **Platform**: Ubuntu 24.04 LTS, running QEMU for bare-metal simulation.
+
+###  Code: task15.c
+
+      #define UART_TX 0x10000000    // UART transmit register (QEMU virt)
+      #define UART_READY 0x10000005 // UART status register (bit 5 = TX ready)
+      
+      // Define uint32_t for bare-metal
+      typedef unsigned int uint32_t;
+      
+      // Shared counter and mutex
+      volatile uint32_t shared_counter = 0;
+      volatile uint32_t mutex = 0; // 0 = unlocked, 1 = locked
+      
+      void uart_putc(char c) {
+          volatile char* uart_tx = (volatile char*)UART_TX;
+          volatile char* uart_ready = (volatile char*)UART_READY;
+          while (!(*uart_ready & (1 << 5))); // Wait for TXFIFO empty
+          *uart_tx = c;
+      }
+      
+      void uart_puts(const char* s) {
+          while (*s) {
+              uart_putc(*s++);
+          }
+      }
+      
+      // Mutex lock using lr.w/sc.w
+      int mutex_lock(volatile uint32_t* mutex) {
+          uint32_t tmp;
+          do {
+              // Load-reserved
+              asm volatile ("lr.w %0, (%1)" : "=r"(tmp) : "r"(mutex));
+              if (tmp != 0) continue; // Mutex already locked, retry
+              // Store-conditional (try to set mutex to 1)
+              asm volatile ("sc.w %0, %2, (%1)" : "=r"(tmp) : "r"(mutex), "r"(1));
+          } while (tmp != 0); // Retry if sc.w failed
+          return 0;
+      }
+      
+      // Mutex unlock
+      void mutex_unlock(volatile uint32_t* mutex) {
+          *mutex = 0; // Non-atomic write is safe as lock holder
+      }
+      
+      // Thread 1: Increment counter in critical section
+      void thread1(void) {
+          mutex_lock(&mutex);
+          uart_puts("T1: Enter critical section\n");
+          shared_counter++;
+          uart_puts("T1: Counter = ");
+          uart_putc('0' + shared_counter);
+          uart_putc('\n');
+          mutex_unlock(&mutex);
+          uart_puts("T1: Exit critical section\n");
+      }
+      
+      // Thread 2: Same as Thread 1
+      void thread2(void) {
+          mutex_lock(&mutex);
+          uart_puts("T2: Enter critical section\n");
+          shared_counter++;
+          uart_puts("T2: Counter = ");
+          uart_putc('0' + shared_counter);
+          uart_putc('\n');
+          mutex_unlock(&mutex);
+          uart_puts("T2: Exit critical section\n");
+      }
+      
+      int main() {
+          uart_putc('A'); // Debug: program start
+          uart_puts("Starting threads\n");
+      
+          // Simulate two threads by interleaving
+          thread1(); // T1 runs first
+          thread2(); // T2 runs second
+          thread1(); // T1 again
+          thread2(); // T2 again
+      
+          uart_puts("Done\n");
+          while (1) {
+              uart_putc('.'); // Show running
+              for (volatile int i = 0; i < 100000; i++);
+          }
+          return 0;
+      }
+Explanation: Implements a spin-lock mutex using lr.w and sc.w, simulating two threads by interleaving thread1 and thread2 calls.
+
+###  Linker Script: Linker15.ld
+      OUTPUT_ARCH(riscv)
+      ENTRY(_start)
+      
+      MEMORY
+      {
+      FLASH (rx) : ORIGIN = 0x80000000, LENGTH = 16M
+      RAM   (rw) : ORIGIN = 0x81000000, LENGTH = 16M
+      }
+      
+      SECTIONS
+      {
+      .text : {
+      *(.text.start)
+      *(.text)
+      (.text.)
+      } > FLASH
+      
+      .rodata : ALIGN(4) {
+      *(.rodata)
+      (.rodata.)
+      } > FLASH
+      
+      .data : ALIGN(4) {
+      *(.data)
+      (.data.)
+      } > RAM AT > FLASH
+      
+      .bss : ALIGN(4) {
+      *(.bss)
+      (.bss.)
+      } > RAM
+      
+      _end = .;
+      }
+Explanation: Defines memory layout for FLASH and RAM, placing sections appropriately.
+
+### Startup15.s
+.section .text.start
+.global _start
 _start:
-    # Set up the stack pointer
+    # Initialize stack pointer
     la sp, _stack_top
 
-    # Zero out the .bss section
-    la a0, __bss_start
-    la a1, __bss_end
-zero_bss:
-    bgeu a0, a1, bss_done
-    sw zero, 0(a0)
-    addi a0, a0, 4
-    j zero_bss
-bss_done:
+    # Early UART output
+    li t0, 0x10000005
+    li t1, 0x20  # Bit 5
+wait_uart:
+    lb t2, 0(t0)
+    and t2, t2, t1
+    beq t2, zero, wait_uart
+    li t0, 0x10000000
+    li t1, 'S'   # Print 'S'
+    sb t1, 0(t0)
 
-    # Call main()
-    call main
+    # Jump to main
+    jal main
+    j .
 
-    # Infinite loop if main returns
-1:
-    wfi
-    j 1b
-
-    .section .bss
-    .globl __bss_start
-    .globl __bss_end
-__bss_start:
-    .space 0x1000    # Adjust size as needed
-__bss_end:
-
-    .space 4096
+.section .bss
+.align 4
+.space 1024
 _stack_top:
-```
+Explanation: Sets up the stack pointer, waits for UART to be ready, prints an 'S', and jumps to main.
+
+###  Commands
+      riscv32-unknown-elf-gcc -g -O0 -march=rv32imac -mabi=ilp32 -nostdlib -T Linker15.ld -o task15.elf task15.c Startup15.s
+      qemu-system-riscv32 -nographic -machine virt -bios none -kernel task15.elf
+Explanation:  
+- Compiles the program with the RV32IMAC architecture to enable atomic instructions.  
+- Runs the program on QEMU without OpenSBI.
+
+###  Output
+      SAStarting threads
+      T1: Enter critical section
+      T1: Counter = 1
+      T1: Exit critical section
+      T2: Enter critical section
+      T2: Counter = 2
+      T2: Exit critical section
+      T1: Enter critical section
+      T1: Counter = 3
+      T1: Exit critical section
+      T2: Enter critical section
+      T2: Counter = 4
+      T2: Exit critical section
+      Done
+      ........
+
+Explanation: Shows the interleaved execution of thread1 and thread2, with the shared counter incrementing safely due to the mutex.
+
+
+
+## 🖨️ Task 16: Using Newlib printf Without an OS
+
+
+
+### Objective
+Retarget _write so that printf sends bytes to a memory-mapped UART in a bare-metal environment.
+
+### Architecture & Platform
+- **Architecture**: RISC-V RV32IMAC. Uses base integer instructions (I) and the Newlib library for printf.
+- **Platform**: Ubuntu 24.04 LTS, running QEMU for bare-metal simulation.
+
+###  Code: Task16.c
+      #include <stdio.h>
+      #include <errno.h>
+      #include <sys/stat.h>
+      #include <sys/types.h>
+      
+      #define UART_TX 0x10000000    // UART transmit register (QEMU virt)
+      #define UART_READY 0x10000005 // UART status register (bit 5 = TX ready)
+      
+      // UART write function
+      void uart_putc(char c) {
+          volatile char* uart_tx = (volatile char*)UART_TX;
+          volatile char* uart_ready = (volatile char*)UART_READY;
+          while (!(*uart_ready & (1 << 5))); // Wait for TXFIFO empty
+          *uart_tx = c;
+      }
+      
+      // Retarget _write for printf
+      int _write(int fd, const char *buf, unsigned int len) {
+          if (fd != 1 && fd != 2) return -1; // Only handle stdout/stderr
+          for (unsigned int i = 0; i < len; i++) {
+              uart_putc(buf[i]);
+          }
+          return len;
+      }
+      
+      // Minimal system call stubs
+      int _close(int fd) {
+          errno = EBADF;
+          return -1;
+      }
+      
+      off_t _lseek(int fd, off_t offset, int whence) {
+          errno = ESPIPE;
+          return -1;
+      }
+      
+      int _read(int fd, char *buf, unsigned int len) {
+          errno = EBADF;
+          return -1;
+      }
+      
+      int _fstat(int fd, struct stat *buf) {
+          if (fd == 1 || fd == 2) {
+              buf->st_mode = S_IFCHR; // Character device for stdout/stderr
+              return 0;
+          }
+          errno = EBADF;
+          return -1;
+      }
+      
+      int _isatty(int fd) {
+          if (fd == 1 || fd == 2) return 1; // stdout/stderr are terminals
+          errno = EBADF;
+          return 0;
+      }
+      
+      void *_sbrk(int incr) {
+          extern char _end; // Defined in linker.ld
+          static char *heap_end = 0;
+          char *prev_heap_end;
+      
+          if (heap_end == 0) heap_end = &_end;
+      
+          prev_heap_end = heap_end;
+          heap_end += incr;
+      
+          // Simple check to avoid heap overflow (adjust as needed)
+          if (heap_end > (char*)0x81010000) { // Limit heap to 64KB
+              errno = ENOMEM;
+              return (void*)-1;
+          }
+          return prev_heap_end;
+      }
+      
+      void _exit(int status) {
+          while (1); // Hang on exit
+      }
+      
+      int _kill(pid_t pid, int sig) {
+          errno = EINVAL;
+          return -1;
+      }
+      
+      pid_t _getpid(void) {
+          return 1; // Single process
+      }
+      
+      int main() {
+          uart_putc('A'); // Direct UART test
+          printf("Hello, RISC-V! Counter: %d\n", 42); // Test printf
+          while (1) {
+              uart_putc('.');
+              for (volatile int i = 0; i < 100000; i++);
+          }
+          return 0;
+      }
+Explanation: Retargets Newlib's printf by implementing _write to send output to UART, with minimal system call stubs for bare-metal compatibility.
+
+### Linker16.ld
+      OUTPUT_ARCH(riscv)
+      ENTRY(_start)
+      
+      MEMORY
+      {
+      FLASH (rx) : ORIGIN = 0x80000000, LENGTH = 16M
+      RAM   (rw) : ORIGIN = 0x81000000, LENGTH = 16M
+      }
+      
+      SECTIONS
+      {
+      .text : {
+      *(.text.start)
+      *(.text)
+      (.text.)
+      } > FLASH
+      
+      .rodata : ALIGN(4) {
+      *(.rodata)
+      (.rodata.)
+      } > FLASH
+      
+      .data : ALIGN(4) {
+      *(.data)
+      (.data.)
+      } > RAM AT > FLASH
+      
+      .bss : ALIGN(4) {
+      *(.bss)
+      (.bss.)
+      } > RAM
+      
+      _end = .;
+      }
+Explanation: Defines memory layout for FLASH and RAM, with _end symbol for heap management.
+
+### Startup16.s
+      .section .text.start
+      .global _start
+      _start:
+          # Initialize stack pointer
+          la sp, _stack_top
+      
+          # Early UART output
+          li t0, 0x10000005
+          li t1, 0x20  # Bit 5
+      wait_uart:
+          lb t2, 0(t0)
+          and t2, t2, t1
+          beq t2, zero, wait_uart
+          li t0, 0x10000000
+          li t1, 'S'   # Print 'S'
+          sb t1, 0(t0)
+      
+          # Jump to main
+          jal main
+          j .
+      
+      .section .bss
+      .align 4
+      .space 1024
+      _stack_top:
+Explanation: Sets up the stack pointer, waits for UART to be ready, prints an 'S', and jumps to main.
+
+###  Commands
+      riscv32-unknown-elf-gcc -march=rv32imc -mabi=ilp32 -c startup16.s startup16.o
+      riscv32-unknown-elf-gcc -march=rv32imc -mabi=ilp32 -c task16.c -o task16.o
+      riscv32-unknown-elf-gcc -march=rv32imc -mabi=ilp32 -nostartfiles -T linker16.ld startup16.o task16.o -o task16.1lf
+      qemu-system-riscv32 -nographic -machine virt -bios none -kernel task16.elf
+Explanation:  
+- Compiles with -nostdlib and -nostartfiles to avoid standard startup and library code, linking custom syscalls.  
+- Runs the program on QEMU without OpenSBI.
+
+###  Output
+      SAHello, RISC-V! Counter: 42
+      ........
+Explanation: Shows the direct UART output ('A'), printf output via _write, and a running indicator.
+
+
+
+##  Task 17: Endianness & Struct Packing
+
+
+### Objective
+Verify if RV32 is little-endian by default using a union trick in C to check byte ordering.
+
+###  Architecture & Platform
+- **Architecture**: RISC-V RV32IMAC. Focuses on byte ordering in memory for RV32.
+- **Platform**: Ubuntu 24.04 LTS, running QEMU for bare-metal simulation.
+
+### Code: Task17.c
+      
+      #include <stdint.h> // For uint32_t and uint8_t
+      
+      // --- UART Register Definitions for QEMU virt machine ---
+      #define UART_TX 0x10000000
+      #define UART_READY 0x10000005
+      
+      // --- Custom UART Functions ---
+      void uart_putc(char c) {
+          volatile char* uart_tx = (volatile char*)UART_TX;
+          volatile char* uart_ready = (volatile char*)UART_READY;
+          while (!(*uart_ready & (1 << 5)));
+          *uart_tx = c;
+      }
+      
+      void uart_puts(const char* s) {
+          while (*s) {
+              uart_putc(*s++);
+          }
+      }
+      
+      // --- Helper Functions for Printing Numbers ---
+      void uart_put_hex_byte(uint8_t byte) {
+          char hex_digits[] = "0123456789ABCDEF";
+          uart_putc('0');
+          uart_putc('x');
+          uart_putc(hex_digits[(byte >> 4) & 0xF]);
+          uart_putc(hex_digits[byte & 0xF]);
+      }
+      
+      void uart_put_hex_u32(uint32_t val) {
+          char hex_digits[] = "0123456789ABCDEF";
+          uart_putc('0');
+          uart_putc('x');
+          for (int i = 7; i >= 0; i--) {
+              uart_putc(hex_digits[(val >> (i * 4)) & 0xF]);
+          }
+      }
+      
+      void uart_put_int(int num) {
+          if (num == 0) {
+              uart_putc('0');
+              return;
+          }
+      
+          char buf[12];
+          int i = 0;
+          int is_negative = 0;
+      
+          if (num < 0) {
+              is_negative = 1;
+              num = -num;
+          }
+      
+          while (num > 0) {
+              buf[i++] = '0' + (num % 10);
+              num /= 10;
+          }
+      
+          if (is_negative) {
+              uart_putc('-');
+          }
+      
+          while (i > 0) {
+              uart_putc(buf[--i]);
+          }
+      }
+      
+      // --- Main Program Entry Point ---
+      int main() {
+          volatile int x = 42;
+          x = x + 1;
+      
+          uart_puts("--------------------------------\n");
+          uart_puts("Bare-metal RISC-V Application\n");
+          uart_puts("Value of x: ");
+          uart_put_int(x);
+          uart_puts("\n");
+          uart_puts("--------------------------------\n\n");
+      
+          // --- Endianness Check Using a Union ---
+          union {
+              uint32_t value;
+              uint8_t bytes[4];
+          } endian_check;
+      
+          endian_check.value = 0x01020304;
+      
+          uart_puts("Verifying Byte Ordering (Endianness):\n");
+          uart_puts("Value stored: ");
+          uart_put_hex_u32(endian_check.value);
+          uart_puts("\n");
+      
+          uart_puts("Bytes in memory (from lowest to highest address):\n");
+          for (int i = 0; i < 4; i++) {
+              uart_puts("Byte ");
+              uart_put_int(i);
+              uart_puts(": ");
+              uart_put_hex_byte(endian_check.bytes[i]);
+              uart_puts("\n");
+          }
+      
+          if (endian_check.bytes[0] == 0x04) {
+              uart_puts("\nThis system is Little-Endian.\n");
+              uart_puts("The least significant byte (0x04) is stored at the lowest memory address.\n");
+          } else if (endian_check.bytes[0] == 0x01) {
+              uart_puts("\nThis system is Big-Endian.\n");
+              uart_puts("The most significant byte (0x01) is stored at the lowest memory address.\n");
+          } else {
+              uart_puts("\nCould not determine endianness (unexpected byte order).\n");
+          }
+      
+          while (1) {
+          }
+      
+          return 0;
+      }
+Explanation: Uses a union to store 0x01020304 and checks byte ordering to determine endianness, printing results via UART.
+
+### Linker17.ld :
+      OUTPUT_ARCH(riscv)
+      ENTRY(_start)
+      
+      MEMORY
+      {
+      FLASH (rx) : ORIGIN = 0x80000000, LENGTH = 16M
+      RAM (rw)   : ORIGIN = 0x81000000, LENGTH = 16M
+      }
+      
+      SECTIONS
+      {
+      . = 0x80000000;
+      
+      .text : {
+      *(.text.start)
+      *(.text)
+      (.text.)
+      } > FLASH
+      
+      .rodata : ALIGN(4) {
+      *(.rodata)
+      (.rodata.)
+      } > FLASH
+      
+      .data : ALIGN(4) {
+      *(.data)
+      (.data.)
+      } > RAM AT > FLASH
+      
+      .bss : ALIGN(4) {
+      *(.bss)
+      (.bss.)
+      } > RAM
+      
+      _end = .;
+      }
+Explanation: Defines memory layout for FLASH and RAM, placing sections appropriately.
+### Startup17.s :
+      .section .text.start
+      .global _start
+      
+      _start:
+          la sp, _stack_top
+          jal main
+          j .
+      
+      .section .bss
+      .align 4
+      .space 1024
+      _stack_top:
+Explanation: Sets up the stack pointer and jumps to main, with a simple infinite loop if main returns.
+
+###  Commands
+      riscv32-unknown-elf-gcc -c task17.c -o task17.o -march=rv32imac -mabi=ilp32 -Os
+      riscv32-unknown-elf-gcc -c startup17.s -o startup17.o -marxh=rv32imac -mabi=ilp32
+      riscv32-unknown-elf-gcc -c startup17.s -o task17.elf task17.o startup17.o -march=rv32imac -mabi=ilp32 -lc -lgcc
+      qemu-system-riscv32 -M virt -bios none -kernel task17.elf -nographic -bios none
+Explanation:  
+- Compiles the program for RV32IMAC with no standard library.  
+- Runs the program on QEMU without OpenSBI.
+
+###  Output
+      Bare-metal RISC-V Application Value of x: 43
+      Verifying Byte Ordering (Endianness):
+      Value stored: 0x01020304
+      Bytes in memory (from lowest to highest address):
+      Byte 0: 0x04
+      Byte 1: 0x03
+      Byte 2: 0x02
+      Byte 3: 0x01
+      
+      This system is Little-Endian.
+      The least significant byte (0x04) is stored at the lowest memory address.
+
+Explanation: Confirms RV32 is little-endian by default, as the least significant byte (0x04) is at the lowest address.
 
-## Where to get a crt0.S?
-1. Newlib: A popular C library for embedded systems, includes a generic crt0.S that you can adapt.
-
-
-    Examples in SDKs:
-    - Microchip’s SoftConsole or SiFive Freedom E SDK.
-    - PlatformIO or Zephyr RTOS projects.
-
-2. VSDSquad or GitHub: Many educational projects and RISC-V demos on GitHub (search for riscv crt0.S).
-
-# Task 13: Interrupt Primer
-## Objective
-To enable the machine-timer interrupt (MTIP) and write a simple handler in C
-
-## What is the Machine Timer Interrupt (MTIP)?
-
-The **Machine Timer Interrupt (MTIP)** is a fundamental interrupt in the RISC-V privileged architecture. It is triggered by the machine timer, which uses two special memory-mapped registers:
-
-- **mtime**: A continuously incrementing 64-bit timer register representing the current time.
-- **mtimecmp**: A 64-bit comparator register. When `mtime` equals or exceeds `mtimecmp`, the machine timer interrupt is triggered.
-
-These registers are usually implemented in the **CLINT** (Core Local Interruptor) hardware block of the RISC-V system.
-
----
-
-## How MTIP Works in this Example
-
-- **Setting up MTIP**:  
-  We program `mtimecmp` to `mtime + MTIMECMP_DELAY`. This means the timer interrupt will fire when the current time reaches this new threshold.
-
-- **Interrupt generation**:  
-  When `mtime` reaches `mtimecmp`, the hardware sets the MTIP bit in the machine interrupt pending register (`mip`), causing the machine-level timer interrupt.
-
-- **Interrupt handler**:  
-  Upon interrupt, control transfers to the trap handler (`trap_handler`), which saves the context, calls the C-level `timer_isr()` handler, then restores context and returns using `mret`.
-
-- **Reprogramming the timer**:  
-  Inside `timer_isr()`, we print a message and then set the next interrupt point by updating `mtimecmp` again (`mtime + MTIMECMP_DELAY`). This ensures periodic timer interrupts continue.
-
-- **Interrupt count limit**:  
-  We limit the number of interrupts handled to 5 using a `count` variable, stopping after 5 interrupts.
-
----
-
-## MTIP handler in C
-```c
-#include <stdint.h>
-#include <stddef.h>
-
-#define UART_BASE        0x10000000
-#define MSTATUS_MIE      (1 << 3)
-#define MIE_MTIE         (1 << 7)
-#define MTIMECMP_DELAY   500000
-
-#define CLINT_MTIME      (*(volatile uint64_t *)(0x200bff8))
-#define CLINT_MTIMECMP   (*(volatile uint64_t *)(0x2004000))
-
-// UART output helper
-void uart_puts(const char *s) {
-    volatile char *uart = (volatile char *)UART_BASE;
-    while (*s) {
-        *uart = *s++;
-    }
-}
-// Timer interrupt handler
-volatile int count = 0;
-
-void timer_isr(void) {
-    if (count < 5) {
-        uart_puts(">> Timer Interrupt Triggered\n");
-        count++;
-        CLINT_MTIMECMP = CLINT_MTIME + MTIMECMP_DELAY;
-    }
-}
-void main(void) {
-    uart_puts("== Timer Interrupt Example ==\n");
-
-    timer_isr();  // Initial test call
-
-    // Set mtvec to point to trap handler
-    extern void trap_handler(void);
-    uintptr_t trap_addr = (uintptr_t)&trap_handler;
-    asm volatile("csrw mtvec, %0" :: "r"(trap_addr));
-
-    // Set first timer interrupt
-    CLINT_MTIMECMP = CLINT_MTIME + MTIMECMP_DELAY;
-
-    // Enable machine timer interrupt and global interrupt
-    asm volatile("csrs mie, %0" :: "r"(MIE_MTIE));
-    asm volatile("csrs mstatus, %0" :: "r"(MSTATUS_MIE));
-
-    while (1) {
-        asm volatile("wfi");
-    }
-}
-
-```
-## Linker
-```
-OUTPUT_ARCH(riscv)
-ENTRY(_start)
-
-MEMORY {
-  RAM (rwx) : ORIGIN = 0x80000000, LENGTH = 16M
-}
-SECTIONS {
-  . = 0x80000000;
-  .text : {
-    *(.text*)
-  }
-  .rodata : {
-    *(.rodata*)
-  }
-  .data : {
-    *(.data*)
-  }
-  .bss : {
-    *(.bss*)
-    *(COMMON)
-  }
-  .trap : {
-    *(.trap)
-  }
-
-  . = ALIGN(4);
-  PROVIDE(_stack_top = ORIGIN(RAM) + LENGTH(RAM));
-}
-```
-## Startup code
-
-```
-.section .text
-.globl _start
-_start:
-    la sp, _stack_top         // Initialize stack pointer
-    call main                 // Call main()
-1:  wfi                       // Halt if main returns
-    j 1b
-
-.section .trap, "ax"
-.globl trap_handler
-trap_handler:
-    addi sp, sp, -16
-    sw ra, 12(sp)
-    sw t0, 8(sp)
-    sw t1, 4(sp)
-    sw t2, 0(sp)
-
-    call timer_isr           // Call C handler
-
-    lw ra, 12(sp)
-    lw t0, 8(sp)
-    lw t1, 4(sp)
-    lw t2, 0(sp)
-    addi sp, sp, 16
-    mret
-
-```
-
-## Commands Used
-```bash
-gedit intr.c
-gedit intr_link.ld
-gedit startup_intr.S
-
-riscv32-unknown-elf-gcc -march=rv32imac_zicsr -mabi=ilp32 -nostdlib -nostartfiles   -T intr_link.ld -o intr.elf startup_intr.S intr.c
-qemu-system-riscv32 -machine virt -nographic -bios none -kernel intr.elf
-```
-
-## Output of the MTIP handler
-
-
-- We're setting a machine timer interrupt (MTIP) using mtimecmp = mtime + delay.
-- Every time mtime reaches or exceeds mtimecmp, an interrupt triggers. Threfore it causes loop of interrupts every MTIMECMP_DELAY ticks.
-- Since we have used a simple for loop to limit it to 5 times, we only see 5 interrupt triggers.
-
-## Key Observations from This Task
-
-- **Interrupts trigger periodically** due to the `mtimecmp` update on each timer ISR call, creating a timer tick interrupt every fixed delay.
-
-- **Enabling interrupts properly is crucial**:
-  - Writing the trap vector base address to `mtvec` CSR enables the processor to jump to your trap handler on interrupts.
-  - Setting the machine interrupt enable (`MSTATUS_MIE`) and machine timer interrupt enable (`MIE_MTIE`) bits is essential for receiving timer interrupts.
-
-- **Stack and context management**:  
-  The trap handler saves and restores key registers (`ra`, `t0`, `t1`, `t2`) to preserve the context of the interrupted code. This ensures your interrupt handler doesn’t corrupt the program state.
-
-- **`wfi` instruction usage**:  
-  The main loop uses the `wfi` (wait for interrupt) instruction to reduce power consumption by halting the CPU until the next interrupt.
-
-- **Linker script placement matters**:  
-  The `.trap` section is defined to place the trap handler code correctly in memory, matching the `mtvec` address.
-
----
-
-## Additional Notes
-
-- The **machine timer interrupt is a key facility for OSes and bare-metal applications** to implement periodic scheduling, timekeeping, or timeouts.
-
-- The **CLINT base addresses** (`0x2004000` for `mtimecmp` and `0x200bff8` for `mtime`) are platform specific and depend on the RISC-V board or emulator configuration (here QEMU virt machine).
-
-- The **`volatile` keyword is essential** when accessing these hardware registers to prevent the compiler from optimizing out necessary reads/writes.
-
----
-
-
-# Task 14:  rv32imac vs rv32imc – What’s the “A”? 
-## Objective
-**To explain the ‘A’ (atomic) extension in rv32imac. What instructions are added and why are they useful?**
-
-## Concept  
-- The **‘A’ extension** stands for **Atomic instructions** in the RISC-V ISA, making the difference between `rv32imc` (integer, multiply, compressed) and `rv32imac` (integer, multiply, atomic, compressed).  
-- It adds **atomic memory operations** such as:  
-  - **`lr.w`** (Load-Reserved Word)  
-  - **`sc.w`** (Store-Conditional Word)  
-  - **`amoadd.w`** (Atomic Memory Operation: Add Word)  
-  - And other atomic operations like `amoswap.w`, `amoxor.w`, `amoand.w`, `amoor.w`, `amomin.w`, `amomax.w`, etc.  
-- These instructions allow **atomic read-modify-write sequences** on memory locations without interruption, which is crucial for:  
-  - Implementing **lock-free data structures** (queues, stacks)  
-  - Writing **OS kernels and synchronization primitives** (mutexes, spinlocks, semaphores)  
-  - Ensuring **safe concurrency** on multi-core or multi-threaded processors  
-- Without these atomic instructions, software would need to disable interrupts or use heavier synchronization methods, which impact performance and scalability.
-
-# Task 15: Atomic Test Program 
-## Objective
-Demonstrate the use of the RISC-V atomic extension (`A`) to implement a simple spinlock using the Load-Reserved (LR) and Store-Conditional (SC) instructions in a two-thread pseudo-concurrent environment.
-
-## Spinlock Implementation Using LR/SC
-The spinlock works by repeatedly attempting to set a lock variable from 0 (unlocked) to 1 (locked). If the lock is already held (value 1), the thread spins until it becomes free.
-
-## Pseudo-threaded C Implementation with Inline Assembly
-
-```c
-#include <stdint.h>
-
-#define UART_BASE 0x10000000
-volatile char *uart = (volatile char *)UART_BASE;
-
-// UART print helper
-void uart_puts(const char *s) {
-    while (*s) {
-        *uart = *s++;
-    }
-}
-
-// Simple spinlock using lr/sc
-volatile int lock = 0;
-
-void spinlock_acquire(volatile int *lock) {
-    int tmp;
-    asm volatile(
-        "1:\n"
-        "lr.w %0, (%1)\n"         // load-reserved from lock
-        "bnez %0, 1b\n"           // if lock != 0, spin (busy wait)
-        "li %0, 1\n"              // try to set lock = 1
-        "sc.w %0, %0, (%1)\n"     // store-conditional to lock
-        "bnez %0, 1b\n"           // if store failed, retry
-        : "=&r"(tmp)
-        : "r"(lock)
-        : "memory"
-    );
-}
-
-void spinlock_release(volatile int *lock) {
-    *lock = 0;
-}
-
-// Simulate two pseudo-threads trying to acquire lock alternately
-void main(void) {
-    uart_puts("Starting atomic spinlock test\n");
-
-    for (int i = 0; i < 2; i++) {
-        // Pseudo-thread 1
-        uart_puts("Thread 1: Waiting for lock...\n");
-        spinlock_acquire(&lock);
-        uart_puts("Thread 1: Lock acquired!\n");
-
-        // Critical section
-        uart_puts("Thread 1: Working...\n");
-
-        spinlock_release(&lock);
-        uart_puts("Thread 1: Lock released\n\n");
-
-        // Pseudo-thread 2
-        uart_puts("Thread 2: Waiting for lock...\n");
-        spinlock_acquire(&lock);
-        uart_puts("Thread 2: Lock acquired!\n");
-
-        // Critical section
-        uart_puts("Thread 2: Working...\n");
-
-        spinlock_release(&lock);
-        uart_puts("Thread 2: Lock released\n\n");
-    }
-
-    uart_puts("Test completed.\n");
-
-    while (1) {
-        asm volatile("wfi");
-    }
-}
-```
-
----
-
-## Key Observations
-
-- The use of `lr.w` and `sc.w` allows atomic lock acquisition without disabling interrupts or requiring complex hardware primitives.
-- The `spinlock_acquire` function loops until it successfully sets the lock.
-- The pseudo-threaded example shows alternating lock acquisition by two threads, ensuring mutual exclusion.
-- This approach forms the foundation for OS-level mutexes and other concurrency controls.
-- Works well in a simulated environment like QEMU; actual hardware concurrency requires proper thread/task support.
-
----
-
-## Commands Used
-```bash
-riscv32-unknown-elf-gcc -march=rv32imac_zicsr -mabi=ilp32 -nostdlib -nostartfiles   -T intr_link.ld -o threads.elf start.S threads.c
-qemu-system-riscv32 -machine virt -nographic -bios none -kernel threads.elf
-```
-### Note: The same Linker and startup scripts have been used here
-
----
-
-
----
-
-# Task 16: Using Newlib printf Without an OS
-
-## Objective
-Demonstrate how to use Newlib's printf functionality in a bare-metal RISC-V environment by implementing custom system call stubs and retargeting the `_write` function to output via UART.
-
-## Solution Overview
-- Implement `_write(int fd, char* buf, int len)` that loops over bytes to UART_TX
-- Provide required syscall stubs for Newlib compatibility
-- Link with Newlib while using custom startup code
-
-## Implementation
-
-### Write system call function
-```c
-// Write system call - this is what printf uses
-int _write(int fd, char *buf, int len) {
-    // Only handle stdout/stderr
-    if (fd == 1 || fd == 2) {
-        for (int i = 0; i < len; i++) {
-            uart_putc(buf[i]);
-        }
-        return len;
-    }
-    return -1;
-}
-```
-
-### syscalls.c - System Call Implementations
-```c
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <sys/fcntl.h>
-#include <sys/times.h>
-#include <sys/errno.h>
-#include <sys/time.h>
-#include <stdio.h>
-
-// QEMU virt machine UART base address
-#define UART_BASE 0x10000000
-#define UART_TX   (*(volatile char*)(UART_BASE + 0))
-#define UART_LSR  (*(volatile char*)(UART_BASE + 5))
-#define UART_LSR_THRE 0x20  // Transmitter holding register empty
-
-// Simple UART output function
-static void uart_putc(char c) {
-    // Wait for transmitter to be ready
-    while (!(UART_LSR & UART_LSR_THRE));
-    UART_TX = c;
-}
-
-// Write system call - this is what printf uses
-int _write(int fd, char *buf, int len) {
-    // Only handle stdout/stderr
-    if (fd == 1 || fd == 2) {
-        for (int i = 0; i < len; i++) {
-            uart_putc(buf[i]);
-        }
-        return len;
-    }
-    return -1;
-}
-
-// Required syscall stubs for Newlib
-int _read(int fd, char *buf, int len) {
-    return -1;  // Not implemented
-}
-
-int _close(int fd) {
-    return -1;  // Not implemented
-}
-
-int _lseek(int fd, int offset, int whence) {
-    return -1;  // Not implemented
-}
-
-int _fstat(int fd, struct stat *st) {
-    st->st_mode = S_IFCHR;
-    return 0;
-}
-
-int _isatty(int fd) {
-    return 1;  // Assume all file descriptors are TTY
-}
-
-void *_sbrk(int incr) {
-    extern char _end;
-    static char *heap_end = 0;
-    char *prev_heap_end;
-
-    if (heap_end == 0) {
-        heap_end = &_end;
-    }
-    
-    prev_heap_end = heap_end;
-    heap_end += incr;
-    
-    return (void *)prev_heap_end;
-}
-
-void _exit(int status) {
-    while (1) {
-        asm volatile("wfi");
-    }
-}
-
-int _kill(int pid, int sig) {
-    return -1;  // Not implemented
-}
-
-int _getpid(void) {
-    return 1;
-}
-```
-
-### main.c - Main Program with Printf
-```c
-#include <stdio.h>
-#include <stdint.h>
-
-
-int main(void) {
-    printf("Hello from RISC-V bare metal!\n");
-    printf("Testing printf with numbers: %d \n", 42);
-    printf("Float test: %.2f\n", 3.14159);
-    
-    while (1) {
-        // Main loop - let interrupts handle the rest
-        asm volatile("wfi");
-    }
-    
-    return 0;
-}
-```
-
-### Updated Linker Script (intr_link.ld)
-```ld
-OUTPUT_ARCH(riscv)
-ENTRY(_start)
-
-MEMORY {
-  RAM (rwx) : ORIGIN = 0x80000000, LENGTH = 16M
-}
-
-SECTIONS {
-  . = 0x80000000;
-  
-  .text : {
-    *(.text.startup)
-    *(.text*)
-  } > RAM
-  
-  .rodata : {
-    *(.rodata*)
-  } > RAM
-  
-  .data : {
-    *(.data*)
-  } > RAM
-  
-  .bss : {
-    *(.bss*)
-    *(COMMON)
-    . = ALIGN(4);
-    _end = .;  /* End of BSS for heap */
-  } > RAM
-  
-  .trap : {
-    *(.trap)
-  } > RAM
-  
-  . = ALIGN(4);
-  PROVIDE(_stack_top = ORIGIN(RAM) + LENGTH(RAM));
-}
-```
-
-
----
-
-## Commands Used
-```bash
-# Compile command - Key changes from original:
-# Kept -nostartfiles since we provide our own _start
-
-riscv32-unknown-elf-gcc -march=rv32imac_zicsr -mabi=ilp32 \
-    -nostartfiles -T intr_link.ld \
-    -o main.elf start.S main.c syscalls.c
-
-# Run with QEMU
-qemu-system-riscv32 -machine virt -nographic -bios none -kernel threads.elf
-```
-### Note: Uses the same startup assembly (start.S) as the previous tasks
-
----
-
-## Key Technical Details
-
-### UART Retargeting
-- The `_write()` function intercepts all printf output calls
-- Uses QEMU virt machine's UART at memory address `0x10000000`
-- Implements proper UART status checking before transmitting bytes
-- Only handles stdout (fd=1) and stderr (fd=2) file descriptors
-
-### System Call Stubs
-- `_sbrk()` provides heap management for printf's internal memory allocation
-- `_fstat()` and `_isatty()` ensure proper file descriptor handling
-- Other stubs prevent linking errors while indicating non-implementation
-
-### Compilation Changes
-- **Removed `-nostdlib` to allow linking with Newlib (required for printf)
-- **Added `syscalls.c` to provide system call implementations
-- **Kept `-nostartfiles` since custom startup code is provided
-
----
-
-## How It Works
-
-1. **Printf Call: When `printf()` is called, Newlib formats the string and calls `_write(1, buffer, length)`
-2. **Syscall Interception: Our custom `_write()` function intercepts this call
-3. **UART Output: Each byte in the buffer is sent to the UART transmit register
-4. **Memory Management: The `_sbrk()` function provides heap space for printf's internal operations
-
----
-
-
-
----
-
-## Key Observations
-
-- Printf functionality works seamlessly in bare-metal environment with proper syscall retargeting
-- The UART implementation properly handles transmitter status checking for reliable output
-- Heap management via `_sbrk()` enables printf's dynamic memory allocation
-- The approach maintains compatibility with existing startup code and interrupt handlers
-- Forms the foundation for more complex I/O operations in embedded systems
-- Can be extended to support input operations by implementing `_read()` with UART receive functionality
-
-
-# Task 17: RISC-V Endianness & Struct Packing Analysis
-
-## Objective
-Verify RISC-V byte ordering (endianness) using C union tricks and demonstrate struct packing behavior in bare-metal environments.
-
-## Question Answered
-"Is RV32 little-endian by default? Show me how to verify byte ordering with a union trick in C."
-
-**Answer: Yes, RISC-V (including RV32) is little-endian by default.**
-
-## Endianness Verification Method
-
-### Union Trick Implementation
-The most reliable way to verify endianness is using a union that overlays a 32-bit integer with a 4-byte array:
-
-```c
-typedef union {
-    uint32_t word;
-    uint8_t bytes[4];
-} endian_test_t;
-
-void test_endianness(void) {
-    endian_test_t test;
-    test.word = 0x01020304;  // Store test pattern
-    
-    printf("Stored value: 0x%08X\n", test.word);
-    printf("bytes[0] = 0x%02X (LSB)\n", test.bytes[0]);
-    printf("bytes[1] = 0x%02X\n", test.bytes[1]);
-    printf("bytes[2] = 0x%02X\n", test.bytes[2]);
-    printf("bytes[3] = 0x%02X (MSB)\n", test.bytes[3]);
-    
-    if (test.bytes[0] == 0x04) {
-        printf("Result: LITTLE ENDIAN\n");
-        printf("Memory layout: [04][03][02][01]\n");
-    }
-}
-```
-
-### Expected RISC-V Output
-```
-Stored value: 0x01020304
-bytes[0] = 0x04 (LSB)
-bytes[1] = 0x03
-bytes[2] = 0x02
-bytes[3] = 0x01 (MSB)
-Result: LITTLE ENDIAN
-Memory layout: [04][03][02][01]
-```
-
-## Struct Packing Analysis
-
-### Normal vs Packed Structures
-```c
-// Normal struct (with padding)
-struct normal_struct {
-    uint8_t  byte1;    // 1 byte
-    uint32_t word1;    // 4 bytes (aligned to 4-byte boundary)
-    uint16_t half1;    // 2 bytes
-    uint8_t  byte2;    // 1 byte
-};  // Total: 12 bytes due to padding
-
-// Packed struct (no padding)
-struct packed_struct {
-    uint8_t  byte1;    // 1 byte
-    uint32_t word1;    // 4 bytes
-    uint16_t half1;    // 2 bytes
-    uint8_t  byte2;    // 1 byte
-} __attribute__((packed));  // Total: 8 bytes
-```
-
-### Memory Layout Comparison
-**Normal Struct (12 bytes):**
-```
-Offset 0: 0xAA       (byte1)
-Offset 1: 0x00       (padding)
-Offset 2: 0x00       (padding)
-Offset 3: 0x00       (padding)
-Offset 4: 0x78       (word1 LSB)
-Offset 5: 0x56
-Offset 6: 0x34
-Offset 7: 0x12       (word1 MSB)
-Offset 8: 0xDE       (half1 LSB)
-Offset 9: 0xBC       (half1 MSB)
-Offset 10: 0xFF      (byte2)
-Offset 11: 0x00      (padding)
-```
-
-**Packed Struct (8 bytes):**
-```
-Offset 0: 0xAA       (byte1)
-Offset 1: 0x78       (word1 LSB)
-Offset 2: 0x56
-Offset 3: 0x34
-Offset 4: 0x12       (word1 MSB)
-Offset 5: 0xDE       (half1 LSB)
-Offset 6: 0xBC       (half1 MSB)
-Offset 7: 0xFF       (byte2)
-```
-
-## Complete Test Program
-
-```c
-#include <stdio.h>
-#include <stdint.h>
-
-// Union trick to examine byte ordering
-typedef union {
-    uint32_t word;
-    uint8_t bytes[4];
-} endian_test_t;
-
-// Struct packing examples
-struct packed_struct {
-    uint8_t  byte1;
-    uint32_t word1;
-    uint16_t half1;
-    uint8_t  byte2;
-} __attribute__((packed));
-
-struct normal_struct {
-    uint8_t  byte1;
-    uint32_t word1;
-    uint16_t half1;
-    uint8_t  byte2;
-};
-
-// Function to print binary representation
-void print_binary(uint32_t value) {
-    printf("Binary: ");
-    for (int i = 31; i >= 0; i--) {
-        printf("%c", (value & (1U << i)) ? '1' : '0');
-        if (i % 8 == 0 && i > 0) printf(" ");
-    }
-    printf("\n");
-}
-
-int main(void) {
-    printf("RISC-V Endianness & Struct Packing Analysis\n");
-    printf("==========================================\n\n");
-    
-    // === ENDIANNESS TEST ===
-    printf("=== RISC-V Endianness Test ===\n");
-    
-    endian_test_t test;
-    test.word = 0x01020304;
-    
-    printf("Stored value: 0x%08X\n", test.word);
-    print_binary(test.word);
-    
-    printf("Byte-by-byte examination:\n");
-    printf("bytes[0] = 0x%02X (LSB)\n", test.bytes[0]);
-    printf("bytes[1] = 0x%02X\n", test.bytes[1]);
-    printf("bytes[2] = 0x%02X\n", test.bytes[2]);
-    printf("bytes[3] = 0x%02X (MSB)\n", test.bytes[3]);
-    
-    // Determine endianness
-    if (test.bytes[0] == 0x04) {
-        printf("Result: LITTLE ENDIAN (LSB first)\n");
-        printf("Memory layout: [04][03][02][01]\n");
-    } else if (test.bytes[0] == 0x01) {
-        printf("Result: BIG ENDIAN (MSB first)\n");
-        printf("Memory layout: [01][02][03][04]\n");
-    } else {
-        printf("Result: UNKNOWN ENDIANNESS\n");
-    }
-    printf("\n");
-    
-    // === STRUCT PACKING TEST ===
-    printf("=== Struct Packing Test ===\n");
-    
-    struct normal_struct normal = {0xAA, 0x12345678, 0xBCDE, 0xFF};
-    struct packed_struct packed = {0xAA, 0x12345678, 0xBCDE, 0xFF};
-    
-    printf("Normal struct size: %zu bytes\n", sizeof(struct normal_struct));
-    printf("Packed struct size: %zu bytes\n", sizeof(struct packed_struct));
-    
-    // Print memory layout of normal struct
-    printf("\nNormal struct memory layout:\n");
-    uint8_t *normal_ptr = (uint8_t*)&normal;
-    for (size_t i = 0; i < sizeof(normal); i++) {
-        printf("Offset %zu: 0x%02X\n", i, normal_ptr[i]);
-    }
-    
-    // Print memory layout of packed struct
-    printf("\nPacked struct memory layout:\n");
-    uint8_t *packed_ptr = (uint8_t*)&packed;
-    for (size_t i = 0; i < sizeof(packed); i++) {
-        printf("Offset %zu: 0x%02X\n", i, packed_ptr[i]);
-    }
-    printf("\n");
-    
-    // === BIT FIELD TEST ===
-    printf("=== Bit Field Test ===\n");
-    
-    struct bit_field_test {
-        uint32_t field1 : 4;   // 4 bits
-        uint32_t field2 : 8;   // 8 bits
-        uint32_t field3 : 12;  // 12 bits
-        uint32_t field4 : 8;   // 8 bits
-    } bf;
-    
-    bf.field1 = 0xF;      // 1111
-    bf.field2 = 0xAB;     // 10101011
-    bf.field3 = 0x123;    // 000100100011
-    bf.field4 = 0xCD;     // 11001101
-    
-    printf("Bit field struct size: %zu bytes\n", sizeof(bf));
-    printf("field1 (4 bits) = 0x%X\n", bf.field1);
-    printf("field2 (8 bits) = 0x%02X\n", bf.field2);
-    printf("field3 (12 bits) = 0x%03X\n", bf.field3);
-    printf("field4 (8 bits) = 0x%02X\n", bf.field4);
-    
-    // Print raw memory
-    printf("Raw memory content:\n");
-    uint8_t *bf_ptr = (uint8_t*)&bf;
-    for (size_t i = 0; i < sizeof(bf); i++) {
-        printf("Byte %zu: 0x%02X\n", i, bf_ptr[i]);
-    }
-    printf("\n");
-    
-    // === ALIGNMENT TEST ===
-    printf("=== Memory Alignment Test ===\n");
-    
-    char buffer[16];
-    
-    // Test different data type alignments
-    uint8_t  *ptr8  = (uint8_t*)(buffer + 1);
-    uint16_t *ptr16 = (uint16_t*)(buffer + 2);
-    uint32_t *ptr32 = (uint32_t*)(buffer + 4);
-    
-    printf("Buffer base address: %p\n", (void*)buffer);
-    printf("uint8_t  pointer: %p (offset: %ld)\n", (void*)ptr8, (char*)ptr8 - buffer);
-    printf("uint16_t pointer: %p (offset: %ld)\n", (void*)ptr16, (char*)ptr16 - buffer);
-    printf("uint32_t pointer: %p (offset: %ld)\n", (void*)ptr32, (char*)ptr32 - buffer);
-    
-    // Check alignment
-    printf("uint8_t  alignment: %s\n", ((uintptr_t)ptr8 % 1 == 0) ? "OK" : "BAD");
-    printf("uint16_t alignment: %s\n", ((uintptr_t)ptr16 % 2 == 0) ? "OK" : "BAD");
-    printf("uint32_t alignment: %s\n", ((uintptr_t)ptr32 % 4 == 0) ? "OK" : "BAD");
-    printf("\n");
-    
-    printf("Analysis complete!\n");
-    printf("Program will now halt...\n");
-    
-    // Give time for all output to flush
-    for (volatile int i = 0; i < 1000000; i++) {
-        // Small delay to ensure output completes
-    }
-    
-    while (1) {
-        asm volatile("wfi");
-    }
-    
-    return 0;
-}
-```
-## Commands Used
-```bash
-# Compile with the syscalls implementation for printf support
-riscv32-unknown-elf-gcc -march=rv32imac_zicsr -mabi=ilp32 \
-    -nostartfiles -T linker.ld \
-    -o endianness.elf start.S endianness.c syscalls.c
-
-# Run with QEMU
-qemu-system-riscv32 -machine virt -nographic -bios none -kernel endianness.elf
-```
-
-### Note: Uses the same startup assembly (start.S), linker script (intr_link.ld), and syscalls.c from the previous printf example
-
----
-
-
-
-## Key Technical Points
-
-### RISC-V Endianness
-- **Default**: Little-endian (LSB stored at lowest memory address)
-- **Bi-endian Support**: RISC-V specification allows big-endian implementations, but little-endian is standard
-- **Verification**: Union trick reliably detects byte ordering at runtime
-
-### Structure Alignment Rules
-- **Natural Alignment**: Data types align to their size boundaries
-  - `uint8_t`: 1-byte alignment
-  - `uint16_t`: 2-byte alignment  
-  - `uint32_t`: 4-byte alignment
-- **Padding**: Compiler inserts padding bytes to maintain alignment
-- **Packed Attribute**: `__attribute__((packed))` removes padding
-
-### Bit Field Behavior
-- Bit fields are allocated in little-endian order within each storage unit
-- First declared field occupies least significant bits
-- Endianness affects how bit fields map to memory bytes
-
----
-
-## Key Observations
-
-- **RISC-V is little-endian by default**: The union trick confirms LSB is stored at the lowest memory address
-- **Struct padding affects memory efficiency**: Normal structs use 50% more memory due to alignment requirements
-- **Packed structs trade performance for space**: Remove padding but may cause unaligned access penalties
-- **Endianness impacts multi-byte data interpretation**: Critical for network protocols, file formats, and cross-platform compatibility
-- **Union trick is portable**: Works across different architectures and compilers for endianness detection
-- **Memory layout visualization**: Direct byte examination reveals how data is actually stored in memory
-
----
