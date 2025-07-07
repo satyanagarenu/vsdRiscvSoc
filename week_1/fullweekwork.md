@@ -71,7 +71,7 @@ Explanation: Adds the toolchain binaries to the system PATH, ensuring tools like
    riscv32-unknown-elf-gdb --version
    riscv32-unknown-elf-objdump --version
 
-   week_1/task_1/Install and sanity check/1.1.png
+week_1/task_1/Install and sanity check/1.1.png
    week_1/task_1/Install and sanity check/1.2.png
    week_1/task_1/Install and sanity check/1.3.png
    week_1/task_1/Install and sanity check/1.4.png
