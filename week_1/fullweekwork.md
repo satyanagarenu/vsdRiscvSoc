@@ -70,6 +70,12 @@ Explanation: Adds the toolchain binaries to the system PATH, ensuring tools like
    riscv32-unknown-elf-gcc --version
    riscv32-unknown-elf-gdb --version
    riscv32-unknown-elf-objdump --version
+
+   week_1/task_1/Install and sanity check/1.1.png
+   week_1/task_1/Install and sanity check/1.2.png
+   week_1/task_1/Install and sanity check/1.3.png
+   week_1/task_1/Install and sanity check/1.4.png
+
    
 Explanation: Confirms that the gcc compiler, gdb debugger, and objdump disassembler are installed. The prefix riscv32-unknown-elf indicates the target (32-bit RISC-V, ELF format for bare-metal).
 
